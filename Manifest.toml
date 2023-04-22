@@ -1,6 +1,6 @@
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.9.0-rc1"
+julia_version = "1.9.0-rc2"
 manifest_format = "2.0"
 project_hash = "618c199bc3fb9578b6e468397153a4a93b845f6e"
 
@@ -21,7 +21,9 @@ version = "0.1.7"
 
 [[deps.CloudBase]]
 deps = ["Base64", "Dates", "Figgy", "FunctionWrappers", "HTTP", "LoggingExtras", "MD5", "NodeJS_16_jll", "Random", "SHA", "Sockets", "URIs", "azurite_jll", "minio_jll"]
-git-tree-sha1 = "e2ac2bda5f80b948638be25799232de557ed9cea"
+git-tree-sha1 = "756ec666e881c5c70210deabf0f7758adbe1453a"
+repo-rev = "main"
+repo-url = "https://github.com/JuliaServices/CloudBase.jl.git"
 uuid = "85eb1798-d7c4-4918-bb13-c944d38e27ed"
 version = "1.4.0"
 

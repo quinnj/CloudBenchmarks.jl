@@ -7,13 +7,13 @@ const VER = "post"
 const worker_pool = Pool{Int, Worker}()
 
 function runbenchmarks(cloud_machine_specs::String, creds::CloudBase.CloudCredentials, bucket::CloudBase.AbstractStore;
-        nthreads::Vector{Int}=[4, 8, 16, 32, 64],
+        nthreads::Vector{Int}=[8, 16, 32, 64],
         nworkers::Vector{Int}=[0, 1, 3],
         tls::Vector{Symbol}=[:mbedtls, :openssl],
-        semaphore_limit::Vector{Int}=[4, 16, 32, 64, 128, 256, 512, 1024, 4096],
-        operation::Vector{Symbol}=[:put, :get, :prefetchdownlodstream],
+        semaphore_limit::Vector{Int}=[16, 32, 64, 128, 256, 512, 1024, 4096],
+        operation::Vector{Symbol}=[:put, :get, :prefetchdownloadstream],
         sizes::Vector{Int}=[2^20, 2^21, 2^22, 2^23, 2^26, 2^28, 2^30, 2^32],
-        ntimes::Int=5,
+        ntimes::Int=3,
     )
     results = []
     for nth in nthreads
@@ -117,9 +117,9 @@ const SIZES = Dict(
 
 function do_op(credentials, bucket, nm, pool, op, data, i)
     if op == :get
-        CloudStore.get(bucket, "data.$nm"; credentials, pool, nowarn=true)
+        CloudStore.get(bucket, "data.$nm.$i"; credentials, pool, nowarn=true)
     elseif op == :prefetchdownloadstream
-        write(devnull, CloudStore.PrefetchedDownloadStream(bucket, "data.$nm"; credentials, pool, nowarn=true))
+        write(devnull, CloudStore.PrefetchedDownloadStream(bucket, "data.$nm.$i"; credentials, pool, nowarn=true))
     else
         @assert op == :put
         CloudStore.put(bucket, "data.$nm.$i", data; credentials, pool, nowarn=true)
@@ -157,13 +157,15 @@ function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBas
         futures = []
         for worker in workers
             push!(futures, remote_eval(worker, quote
-                const op = $operation
-                const data = op == :put ? rand(UInt8, size) : nothing
-                length(CloudBenchmarks.do_op($credentials, $bucket, "1mb", $pool, $operation, data, 1))
+                const op = $(Meta.quot(operation))
+                if !@isdefined(data)
+                    const data = op == :put ? rand(UInt8, $size) : nothing
+                end
+                length(CloudBenchmarks.do_op($credentials, $bucket, "1mb.1", $pool, op, data, 1))
             end))
         end
         # on on coordinator
-        do_op(credentials, bucket, "1mb", pool, operation, data, 1)
+        do_op(credentials, bucket, "1mb.1", pool, operation, data, 1)
         foreach(fetch, futures)
         empty!(futures)
         # done warming up
@@ -171,7 +173,7 @@ function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBas
         n = div(nparts, length(workers) + 1)
         for (i, worker) in enumerate(workers)
             push!(futures, remote_eval(worker, quote
-                CloudBenchmarks.do_op_n($credentials, $bucket, $nm, $pool, $operation, $n, data, $i)
+                CloudBenchmarks.do_op_n($credentials, $bucket, $nm, $pool, $(Meta.quot(operation)), $n, data, $i)
             end))
         end
         nbytes = do_op_n(credentials, bucket, nm, pool, operation, n, data, 0)
