@@ -4,6 +4,8 @@ using CloudStore, CloudBase, HTTP, MbedTLS, OpenSSL, ConcurrentUtilities
 
 const VER = "post"
 
+const worker_pool = Pool{Int, Worker}()
+
 function runbenchmarks(cloud_machine_specs::String, creds::CloudBase.CloudCredentials, bucket::CloudBase.AbstractStore;
         nthreads::Vector{Int}=[4, 8, 16, 32, 64],
         nworkers::Vector{Int}=[0, 1, 3],
@@ -16,20 +18,24 @@ function runbenchmarks(cloud_machine_specs::String, creds::CloudBase.CloudCreden
     results = []
     for nth in nthreads
         # create our worker where we'll run the benchmark from
-        worker = Worker(; threads=string(nth))
-        remote_fetch(worker, :(using CloudBenchmarks))
-        append!(results, remote_fetch(worker, quote
-            CloudBenchmarks.runbenchmarks(
-                $creds, $bucket,
-                $nth,
-                $nworkers,
-                $tls,
-                $semaphore_limit,
-                $operation,
-                $sizes,
-                $ntimes,
-            )
-        end))
+        worker = acquire(() -> Worker(; threads=string(nth)), worker_pool, nth)
+        try
+            remote_fetch(worker, :(using CloudBenchmarks))
+            append!(results, remote_fetch(worker, quote
+                CloudBenchmarks.runbenchmarks(
+                    $creds, $bucket,
+                    $nth,
+                    $nworkers,
+                    $tls,
+                    $semaphore_limit,
+                    $operation,
+                    $sizes,
+                    $ntimes,
+                )
+            end))
+        finally
+            release(worker_pool, nth, worker)
+        end
     end
     file = "$cloud_machine_specs.tsv"
     open(file, "w+") do io
@@ -46,8 +52,13 @@ function makeworkers(n)
     tasks = Task[]
     for _ = 1:n
         push!(tasks, Threads.@spawn begin
-            worker = Worker(; threads=string(Threads.nthreads()))
-            remote_fetch(worker, :(using CloudStore, HTTP, OpenSSL, MbedTLS))
+            worker = acquire(() -> Worker(; threads=string(Threads.nthreads())), worker_pool, Threads.nthreads())
+            try
+                remote_fetch(worker, :(using CloudBenchmarks, CloudStore, HTTP, OpenSSL, MbedTLS))
+            catch
+                release(worker_pool, Threads.nthreads())
+                rethrow()
+            end
             worker
         end)
     end
@@ -66,20 +77,26 @@ function runbenchmarks(creds::CloudBase.CloudCredentials, bucket::CloudBase.Abst
     results = []
     for nwork in nworkers
         workers = makeworkers(nwork)
-        for type in tls
-            if type == :mbedtls
-                HTTP.SOCKET_TYPE_TLS[] = MbedTLS.SSLContext
-            else
-                @assert type == :openssl
-                HTTP.SOCKET_TYPE_TLS[] = OpenSSL.SSLStream
-            end
-            for sem in semaphore_limit
-                pool = HTTP.Pool(sem)
-                for op in operation
-                    for sz in sizes
-                        push!(results, runbenchmarks(creds, bucket, nthreads, nwork, type, sem, op, sz, ntimes, workers, pool))
+        try
+            for type in tls
+                if type == :mbedtls
+                    HTTP.SOCKET_TYPE_TLS[] = MbedTLS.SSLContext
+                else
+                    @assert type == :openssl
+                    HTTP.SOCKET_TYPE_TLS[] = OpenSSL.SSLStream
+                end
+                for sem in semaphore_limit
+                    pool = HTTP.Pool(sem)
+                    for op in operation
+                        for sz in sizes
+                            push!(results, runbenchmarks(creds, bucket, nthreads, nwork, type, sem, op, sz, ntimes, workers, pool))
+                        end
                     end
                 end
+            end
+        finally
+            for worker in workers
+                release(worker_pool, Threads.nthreads(), worker)
             end
         end
     end
