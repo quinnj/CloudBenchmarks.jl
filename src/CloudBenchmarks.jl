@@ -17,8 +17,8 @@ function runbenchmarks(cloud_machine_specs::String, creds::CloudBase.CloudCreden
     for nth in nthreads
         # create our worker where we'll run the benchmark from
         worker = Worker(; threads=string(nth))
+        remote_fetch(worker, :(using CloudBenchmarks))
         append!(results, remote_fetch(worker, quote
-            using CloudBenchmarks
             CloudBenchmarks.runbenchmarks(
                 $creds, $bucket,
                 $nth,
@@ -77,7 +77,7 @@ function runbenchmarks(creds::CloudBase.CloudCredentials, bucket::CloudBase.Abst
                 pool = HTTP.Pool(sem)
                 for op in operation
                     for sz in sizes
-                        push!(results, runbenchmarks(creds, bucket, nthreads, nworkers, type, sem, op, sz, ntimes, workers, pool))
+                        push!(results, runbenchmarks(creds, bucket, nthreads, nwork, type, sem, op, sz, ntimes, workers, pool))
                     end
                 end
             end
@@ -158,7 +158,7 @@ function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBas
             end))
         end
         nbytes = do_op_n(credentials, bucket, nm, pool, operation, n, data, 0)
-        nbytes = sum(fetch, futures) + nbytes[]
+        nbytes = sum(fetch, futures; init=0) + nbytes[]
         stop = time()
         gbits_per_second = nbytes == 0 ? 0 : (((8 * nbytes) / 1e9) / (stop - start))
         @info "single benchmark completed with bandwidth: $(gbits_per_second) Gbps"
