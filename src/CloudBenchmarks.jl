@@ -183,7 +183,7 @@ function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBas
         futures = []
         for (i, worker) in enumerate(workers)
             push!(futures, remote_eval(worker, quote
-                CloudBenchmarks.do_op(credentials, bucket, "1mb.$i", nothing, $(Meta.quot(operation)), nothing, 1)
+                CloudBenchmarks.do_op(credentials, bucket, string("1mb.", $i), nothing, $(Meta.quot(operation)), nothing, 1)
             end))
         end
         # on on coordinator
