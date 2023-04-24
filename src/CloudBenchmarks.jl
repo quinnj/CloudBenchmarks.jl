@@ -7,7 +7,7 @@ const VER = "post"
 const worker_pool = Pool{Int, Worker}()
 
 function runbenchmarks(cloud_machine_specs::String, creds::CloudBase.CloudCredentials, bucket::CloudBase.AbstractStore;
-        nthreads::Vector{Int}=[8, 16, 32, 64],
+        nthreads::Vector{Int}=[16, 32, 64],
         nworkers::Vector{Int}=[0, 1, 3],
         tls::Vector{Symbol}=[:mbedtls, :openssl],
         semaphore_limit::Vector{Int}=[512],
@@ -181,13 +181,13 @@ function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBas
     function tester()
         # warm up
         futures = []
-        for worker in workers
+        for (i, worker) in enumerate(workers)
             push!(futures, remote_eval(worker, quote
-                CloudBenchmarks.do_op(credentials, bucket, "1mb.1", nothing, $(Meta.quot(operation)), nothing, 1)
+                CloudBenchmarks.do_op(credentials, bucket, "1mb.$i", nothing, $(Meta.quot(operation)), nothing, 1)
             end))
         end
         # on on coordinator
-        do_op(credentials, bucket, "1mb.1", nothing, operation, nothing, 1)
+        do_op(credentials, bucket, "1mb.0", nothing, operation, nothing, 1)
         foreach(fetch, futures)
         empty!(futures)
         @debug "done warming up"
@@ -199,12 +199,13 @@ function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBas
                 CloudBenchmarks.do_op_n(credentials, bucket, $nm, $semaphore_limit, $(Meta.quot(operation)), $n, $size, $i)
             end))
         end
-        nbytes = do_op_n(credentials, bucket, nm, semaphore_limit, operation, n, size, 0)
+        nbytes = do_op_n(credentials, bucket, nm, semaphore_limit, operation, max(1, n), size, 0)
         nbytes = sum(fetch, futures; init=0) + nbytes[]
         stop = time()
         gbits_per_second = nbytes == 0 ? 0 : (((8 * nbytes) / 1e9) / (stop - start))
         @info "single benchmark completed with bandwidth: $(gbits_per_second) Gbps"
         GC.gc(true)
+        GC.gc()
         return gbits_per_second
     end
     curmax = 0.0
