@@ -21,29 +21,21 @@ version = "0.1.7"
 
 [[deps.CloudBase]]
 deps = ["Base64", "Dates", "Figgy", "FunctionWrappers", "HTTP", "LoggingExtras", "MD5", "NodeJS_16_jll", "Random", "SHA", "Sockets", "URIs", "azurite_jll", "minio_jll"]
-git-tree-sha1 = "756ec666e881c5c70210deabf0f7758adbe1453a"
-repo-rev = "main"
-repo-url = "https://github.com/JuliaServices/CloudBase.jl.git"
+git-tree-sha1 = "ca84868bfeddcf54b678a7239a85934341b632c0"
 uuid = "85eb1798-d7c4-4918-bb13-c944d38e27ed"
-version = "1.4.0"
+version = "1.3.5"
 
 [[deps.CloudStore]]
-deps = ["Base64", "CloudBase", "CodecZlib", "CodecZlibNG", "HTTP", "Mmap", "TranscodingStreams", "WorkerUtilities", "XMLDict"]
-git-tree-sha1 = "b7a76a3dfc33b879ed311c8995509ae51bd47d14"
+deps = ["Base64", "CloudBase", "CodecZlib", "HTTP", "Mmap", "WorkerUtilities", "XMLDict"]
+git-tree-sha1 = "3ca0bb93d1b6c4b5fb4e0d160cb437c88a4249d1"
 uuid = "3365d9ee-d53b-4a56-812d-5344d5b716d7"
-version = "1.4.0"
+version = "1.3.9"
 
 [[deps.CodecZlib]]
 deps = ["TranscodingStreams", "Zlib_jll"]
 git-tree-sha1 = "9c209fb7536406834aa938fb149964b985de6c83"
 uuid = "944b1d66-785c-5afd-91f1-9de20f533193"
 version = "0.7.1"
-
-[[deps.CodecZlibNG]]
-deps = ["TranscodingStreams", "ZlibNG_jll"]
-git-tree-sha1 = "54d5b6797b79c56674cf72012fb9fafdf93abf3f"
-uuid = "642d12eb-acb5-4437-bcfc-a25e07ad685c"
-version = "0.1.0"
 
 [[deps.ConcurrentUtilities]]
 deps = ["Serialization", "Sockets"]
@@ -83,12 +75,15 @@ uuid = "069b7b12-0de2-55c6-9aab-29f3d0a68a2e"
 version = "1.1.3"
 
 [[deps.HTTP]]
-deps = ["Base64", "CodecZlib", "ConcurrentUtilities", "Dates", "Logging", "LoggingExtras", "MbedTLS", "NetworkOptions", "OpenSSL", "Random", "SimpleBufferStream", "Sockets", "URIs", "UUIDs"]
-git-tree-sha1 = "3ff40d5934d76e4a63e23e89cfb71e26c0995f94"
-repo-rev = "jq-work"
-repo-url = "https://github.com/JuliaWeb/HTTP.jl.git"
+deps = ["Base64", "CodecZlib", "Dates", "IniFile", "Logging", "LoggingExtras", "MbedTLS", "NetworkOptions", "OpenSSL", "Random", "SimpleBufferStream", "Sockets", "URIs", "UUIDs"]
+git-tree-sha1 = "37e4657cd56b11abe3d10cd4a1ec5fbdb4180263"
 uuid = "cd3eb016-35fb-5094-929b-558a96fad6f3"
 version = "1.7.4"
+
+[[deps.IniFile]]
+git-tree-sha1 = "f550e6e32074c939295eb5ea6de31849ac2c9625"
+uuid = "83e8ac13-25f8-5344-8a64-a9f2b223428f"
+version = "0.5.1"
 
 [[deps.InteractiveUtils]]
 deps = ["Markdown"]
@@ -182,17 +177,15 @@ version = "16.15.0+0"
 
 [[deps.OpenSSL]]
 deps = ["BitFlags", "Dates", "MozillaCACerts_jll", "OpenSSL_jll", "Sockets"]
-git-tree-sha1 = "b910a7727651cbe6e8d78f2da1a9af859f350d79"
-repo-rev = "main"
-repo-url = "https://github.com/JuliaWeb/OpenSSL.jl.git"
+git-tree-sha1 = "6503b77492fd7fcb9379bf73cd31035670e3c509"
 uuid = "4d8831e6-92b7-49fb-bdf8-b643e874388c"
-version = "1.3.5"
+version = "1.3.3"
 
 [[deps.OpenSSL_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "6cc6366a14dbe47e5fc8f3cbe2816b1185ef5fc4"
+deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
+git-tree-sha1 = "9ff31d101d987eb9d66bd8b176ac7c277beccd09"
 uuid = "458c3c95-2e84-50aa-8efc-19380b2a3a95"
-version = "3.0.8+0"
+version = "1.1.20+0"
 
 [[deps.OrderedCollections]]
 git-tree-sha1 = "d321bf2de576bf25ec4d3e4360faca399afca282"
@@ -289,12 +282,6 @@ deps = ["EzXML", "IterTools", "OrderedCollections"]
 git-tree-sha1 = "d9a3faf078210e477b291c79117676fca54da9dd"
 uuid = "228000da-037f-5747-90a9-8195ccbf91a5"
 version = "0.4.1"
-
-[[deps.ZlibNG_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
-git-tree-sha1 = "99f1bbcd8899993c1671ce9770063453063b92a3"
-uuid = "c62bbaca-5768-5b75-85e2-9a0ea54e1624"
-version = "2.1.0+0"
 
 [[deps.Zlib_jll]]
 deps = ["Libdl"]

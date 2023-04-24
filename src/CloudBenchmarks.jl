@@ -2,7 +2,7 @@ module CloudBenchmarks
 
 using CloudStore, CloudBase, HTTP, MbedTLS, OpenSSL, ConcurrentUtilities, Mmap, Profile
 
-const VER = "post"
+const VER = "pre"
 
 const worker_pool = Pool{Int, Worker}()
 
@@ -119,13 +119,13 @@ const SIZES = Dict(
     2^32 => ("4gb", 1),
 )
 
-function do_op(credentials, bucket, nm, pool, op, data, i)
+function do_op(credentials, bucket, nm, op, data, i)
     if op == :get
-        return length(CloudStore.get(bucket, "data.$nm.$i"; credentials, pool, logerrors=true, nowarn=true))
+        return length(CloudStore.get(bucket, "data.$nm.$i"; credentials, logerrors=true, nowarn=true))
     elseif op == :prefetchdownloadstream
         m = Mmap.mmap(Vector{UInt8}, 2^25)
         len = 0
-        io = CloudStore.PrefetchedDownloadStream(bucket, "data.$nm.$i"; credentials, pool, nowarn=true)
+        io = CloudStore.PrefetchedDownloadStream(bucket, "data.$nm.$i"; credentials, nowarn=true)
         while !eof(io)
             len += readbytes!(io, m)
         end
@@ -133,19 +133,20 @@ function do_op(credentials, bucket, nm, pool, op, data, i)
     else
         @assert op == :put
         data = data === nothing ? rand(UInt8, 2^20) : data
-        obj = CloudStore.put(bucket, "data.$nm.$i", data; credentials, pool, logerrors=true, nowarn=true)
+        obj = CloudStore.put(bucket, "data.$nm.$i", data; credentials, logerrors=true, nowarn=true)
         return obj.size
     end
 end
 
 function do_op_n(credentials, bucket, nm, semaphore_limit, op, n, size, i)
-    pool = HTTP.Pool(semaphore_limit)
+    HTTP.ConnectionPool.closeall()
+    HTTP.set_default_connection_limit!(semaphore_limit)
     data = op == :put ? rand(UInt8, size) : nothing
     nbytes = Threads.Atomic{Int}(0)
     @sync for j = 1:n
         Threads.@spawn begin
             k = i * n + $j
-            len = do_op(credentials, bucket, nm, pool, op, data, k)
+            len = do_op(credentials, bucket, nm, op, data, k)
             Threads.atomic_add!(nbytes, len)
         end
     end
@@ -170,11 +171,11 @@ function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBas
         futures = []
         for (i, worker) in enumerate(workers)
             push!(futures, remote_eval(worker, quote
-                CloudBenchmarks.do_op(credentials, bucket, string("1mb.", $i), nothing, $(Meta.quot(operation)), nothing, 1)
+                CloudBenchmarks.do_op(credentials, bucket, string("1mb.", $i), $(Meta.quot(operation)), nothing, 1)
             end))
         end
         # on on coordinator
-        do_op(credentials, bucket, "1mb.0", nothing, operation, nothing, 1)
+        do_op(credentials, bucket, "1mb.0", operation, nothing, 1)
         foreach(fetch, futures)
         empty!(futures)
         @debug "done warming up"
