@@ -13,14 +13,17 @@ function runbenchmarks(cloud_machine_specs::String, creds::CloudBase.CloudCreden
         semaphore_limit::Vector{Int}=[16, 32, 64, 128, 256, 512, 1024, 4096],
         operation::Vector{Symbol}=[:put, :get, :prefetchdownloadstream],
         sizes::Vector{Int}=[2^20, 2^21, 2^22, 2^23, 2^26, 2^28, 2^30, 2^32],
-        ntimes::Int=3,
+        ntimes::Int=4,
     )
     results = []
     for nth in nthreads
         # create our worker where we'll run the benchmark from
-        worker = acquire(() -> Worker(; threads=string(nth)), worker_pool, nth)
+        worker = acquire(worker_pool, nth) do
+            w = Worker(; threads=string(nth))
+            remote_fetch(w, :(using CloudBenchmarks))
+            w
+        end
         try
-            remote_fetch(worker, :(using CloudBenchmarks))
             append!(results, remote_fetch(worker, quote
                 CloudBenchmarks.runbenchmarks(
                     $creds, $bucket,
@@ -48,18 +51,19 @@ function runbenchmarks(cloud_machine_specs::String, creds::CloudBase.CloudCreden
     return file
 end
 
-function makeworkers(n)
+function makeworkers(n, creds, bucket)
     tasks = Task[]
     for _ = 1:n
         push!(tasks, Threads.@spawn begin
-            worker = acquire(() -> Worker(; threads=string(Threads.nthreads())), worker_pool, Threads.nthreads())
-            try
-                remote_fetch(worker, :(using CloudBenchmarks, CloudStore, HTTP, OpenSSL, MbedTLS))
-            catch
-                release(worker_pool, Threads.nthreads())
-                rethrow()
+            acquire(worker_pool, Threads.nthreads()) do
+                w = Worker(; threads=string(Threads.nthreads()))
+                remote_fetch(w, :(using CloudBenchmarks))
+                remote_fetch(w, quote
+                    const credentials = $creds
+                    const bucket = $bucket
+                end)
+                w
             end
-            worker
         end)
     end
     return Worker[fetch(task) for task in tasks]
@@ -76,7 +80,7 @@ function runbenchmarks(creds::CloudBase.CloudCredentials, bucket::CloudBase.Abst
     )
     results = []
     for nwork in nworkers
-        workers = makeworkers(nwork)
+        workers = makeworkers(nwork, creds, bucket)
         try
             for type in tls
                 if type == :mbedtls
@@ -86,10 +90,9 @@ function runbenchmarks(creds::CloudBase.CloudCredentials, bucket::CloudBase.Abst
                     HTTP.SOCKET_TYPE_TLS[] = OpenSSL.SSLStream
                 end
                 for sem in semaphore_limit
-                    pool = HTTP.Pool(sem)
                     for op in operation
                         for sz in sizes
-                            push!(results, runbenchmarks(creds, bucket, nthreads, nwork, type, sem, op, sz, ntimes, workers, pool))
+                            push!(results, runbenchmarks(creds, bucket, nthreads, nwork, type, sem, op, sz, ntimes, workers))
                         end
                     end
                 end
@@ -117,7 +120,7 @@ const SIZES = Dict(
 
 function do_op(credentials, bucket, nm, pool, op, data, i)
     if op == :get
-        return length(CloudStore.get(bucket, "data.$nm.$i"; credentials, pool, nowarn=true))
+        return length(CloudStore.get(bucket, "data.$nm.$i"; credentials, pool, logerrors=true, nowarn=true))
     elseif op == :prefetchdownloadstream
         m = Mmap.mmap(Vector{UInt8}, 2^25)
         len = 0
@@ -128,12 +131,23 @@ function do_op(credentials, bucket, nm, pool, op, data, i)
         return len
     else
         @assert op == :put
-        obj = CloudStore.put(bucket, "data.$nm.$i", data; credentials, pool, nowarn=true)
-        return obj.size
+        acquired = false
+        if data === nothing
+            data = getdata(2^20)
+            acquired = true
+        end
+        try
+            obj = CloudStore.put(bucket, "data.$nm.$i", data; credentials, pool, logerrors=true, nowarn=true)
+            return obj.size
+        finally
+            acquired && release(buffer_pool, 2^20, data)
+        end
     end
 end
 
-function do_op_n(credentials, bucket, nm, pool, op, n, data, i)
+function do_op_n(credentials, bucket, nm, semaphore_limit, op, n, size, i)
+    pool = HTTP.Pool(semaphore_limit)
+    data = getdata(size)
     nbytes = Threads.Atomic{Int}(0)
     @sync for j = 1:n
         Threads.@spawn begin
@@ -142,8 +156,13 @@ function do_op_n(credentials, bucket, nm, pool, op, n, data, i)
             Threads.atomic_add!(nbytes, len)
         end
     end
+    release(buffer_pool, size, data)
     return nbytes[]
 end
+
+const buffer_pool = Pool{Int, Vector{UInt8}}()
+
+getdata(sz) = acquire(() -> rand(UInt8, sz), buffer_pool, sz)
 
 function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBase.AbstractStore,
         nthreads::Int,
@@ -154,34 +173,31 @@ function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBas
         size::Int,
         ntimes::Int,
         workers::Vector{Worker},
-        pool::HTTP.Pool,
     )
     nm, nparts = SIZES[size]
-    data = operation == :put ? rand(UInt8, size) : nothing
     @info "running benchmark with $nthreads threads, $nworkers workers, $tls tls, $semaphore_limit semaphore limit, $operation operation, $nparts operations on $nm size files"
     function tester()
         # warm up
         futures = []
         for worker in workers
             push!(futures, remote_eval(worker, quote
-                op = $(Meta.quot(operation))
-                data = op == :put ? rand(UInt8, $size) : nothing
-                CloudBenchmarks.do_op($credentials, $bucket, "1mb.1", $pool, op, data, 1)
+                CloudBenchmarks.do_op(credentials, bucket, "1mb.1", nothing, $(Meta.quot(operation)), nothing, 1)
             end))
         end
         # on on coordinator
-        do_op(credentials, bucket, "1mb.1", pool, operation, data, 1)
+        do_op(credentials, bucket, "1mb.1", nothing, operation, nothing, 1)
         foreach(fetch, futures)
         empty!(futures)
+        @debug "done warming up"
         # done warming up
         start = time()
         n = div(nparts, length(workers) + 1)
         for (i, worker) in enumerate(workers)
             push!(futures, remote_eval(worker, quote
-                CloudBenchmarks.do_op_n($credentials, $bucket, $nm, $pool, $(Meta.quot(operation)), $n, data, $i)
+                CloudBenchmarks.do_op_n(credentials, bucket, $nm, $semaphore_limit, $(Meta.quot(operation)), $n, $size, $i)
             end))
         end
-        nbytes = do_op_n(credentials, bucket, nm, pool, operation, n, data, 0)
+        nbytes = do_op_n(credentials, bucket, nm, semaphore_limit, operation, n, size, 0)
         nbytes = sum(fetch, futures; init=0) + nbytes[]
         stop = time()
         gbits_per_second = nbytes == 0 ? 0 : (((8 * nbytes) / 1e9) / (stop - start))
@@ -193,7 +209,7 @@ function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBas
     for _ = 1:ntimes
         curmax = max(curmax, tester())
     end
-    return (; nthreads, nworkers, tls, semaphore_limit, operation, size, rate=curmax)
+    return (; nthreads, nworkers, tls, semaphore_limit, operation, size=nm, rate=curmax)
 end
 
 end # module CloudBenchmarks
