@@ -1,6 +1,6 @@
 module CloudBenchmarks
 
-using CloudStore, CloudBase, HTTP, MbedTLS, OpenSSL, ConcurrentUtilities
+using CloudStore, CloudBase, HTTP, MbedTLS, OpenSSL, ConcurrentUtilities, Mmap
 
 const VER = "post"
 
@@ -119,7 +119,11 @@ function do_op(credentials, bucket, nm, pool, op, data, i)
     if op == :get
         CloudStore.get(bucket, "data.$nm.$i"; credentials, pool, nowarn=true)
     elseif op == :prefetchdownloadstream
-        write(devnull, CloudStore.PrefetchedDownloadStream(bucket, "data.$nm.$i"; credentials, pool, nowarn=true))
+        m = Mmap.mmap(Vector{UInt8}, 2^25)
+        io = CloudStore.PrefetchedDownloadStream(bucket, "data.$nm.$i"; credentials, pool, nowarn=true)
+        while !eof(io)
+            readbytes!(io, m)
+        end
     else
         @assert op == :put
         CloudStore.put(bucket, "data.$nm.$i", data; credentials, pool, nowarn=true)
@@ -157,10 +161,8 @@ function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBas
         futures = []
         for worker in workers
             push!(futures, remote_eval(worker, quote
-                const op = $(Meta.quot(operation))
-                if !@isdefined(data)
-                    const data = op == :put ? rand(UInt8, $size) : nothing
-                end
+                op = $(Meta.quot(operation))
+                data = op == :put ? rand(UInt8, $size) : nothing
                 length(CloudBenchmarks.do_op($credentials, $bucket, "1mb.1", $pool, op, data, 1))
             end))
         end
