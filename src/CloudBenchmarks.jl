@@ -10,13 +10,15 @@ function runbenchmarks(cloud_machine_specs::String, creds::CloudBase.CloudCreden
         nthreads::Vector{Int}=[8, 16, 32, 64],
         nworkers::Vector{Int}=[0, 1, 3],
         tls::Vector{Symbol}=[:mbedtls, :openssl],
-        semaphore_limit::Vector{Int}=[16, 32, 64, 128, 256, 512, 1024, 4096],
+        semaphore_limit::Vector{Int}=[512],
         operation::Vector{Symbol}=[:put, :get, :prefetchdownloadstream],
         sizes::Vector{Int}=[2^20, 2^21, 2^22, 2^23, 2^26, 2^28, 2^30, 2^32],
-        ntimes::Int=4,
+        ntimes::Int=3,
     )
     results = []
     for nth in nthreads
+        # add a manual refresh of credentials
+        CloudBase.getCredentials(creds)
         # create our worker where we'll run the benchmark from
         worker = acquire(worker_pool, nth) do
             w = Worker(; threads=string(nth))
