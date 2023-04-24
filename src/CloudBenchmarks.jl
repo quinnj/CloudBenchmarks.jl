@@ -117,16 +117,19 @@ const SIZES = Dict(
 
 function do_op(credentials, bucket, nm, pool, op, data, i)
     if op == :get
-        CloudStore.get(bucket, "data.$nm.$i"; credentials, pool, nowarn=true)
+        return length(CloudStore.get(bucket, "data.$nm.$i"; credentials, pool, nowarn=true))
     elseif op == :prefetchdownloadstream
         m = Mmap.mmap(Vector{UInt8}, 2^25)
+        len = 0
         io = CloudStore.PrefetchedDownloadStream(bucket, "data.$nm.$i"; credentials, pool, nowarn=true)
         while !eof(io)
-            readbytes!(io, m)
+            len += readbytes!(io, m)
         end
+        return len
     else
         @assert op == :put
-        CloudStore.put(bucket, "data.$nm.$i", data; credentials, pool, nowarn=true)
+        obj = CloudStore.put(bucket, "data.$nm.$i", data; credentials, pool, nowarn=true)
+        return obj.size
     end
 end
 
@@ -135,7 +138,7 @@ function do_op_n(credentials, bucket, nm, pool, op, n, data, i)
     @sync for j = 1:n
         Threads.@spawn begin
             k = i * n + $j
-            len = length(do_op(credentials, bucket, nm, pool, op, data, k))
+            len = do_op(credentials, bucket, nm, pool, op, data, k)
             Threads.atomic_add!(nbytes, len)
         end
     end
@@ -163,7 +166,7 @@ function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBas
             push!(futures, remote_eval(worker, quote
                 op = $(Meta.quot(operation))
                 data = op == :put ? rand(UInt8, $size) : nothing
-                length(CloudBenchmarks.do_op($credentials, $bucket, "1mb.1", $pool, op, data, 1))
+                CloudBenchmarks.do_op($credentials, $bucket, "1mb.1", $pool, op, data, 1)
             end))
         end
         # on on coordinator
