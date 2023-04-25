@@ -8,7 +8,7 @@ const worker_pool = Pool{Int, Worker}()
 
 function runbenchmarks(cloud_machine_specs::String, creds::Union{CloudBase.CloudCredentials, Function}, bucket::CloudBase.AbstractStore;
         nthreads::Vector{Int}=[16, 32, 64],
-        nworkers::Vector{Int}=[0, 1, 3],
+        nworkers::Vector{Int}=[0],
         tls::Vector{Symbol}=[:mbedtls, :openssl],
         semaphore_limit::Vector{Int}=[512],
         operation::Vector{Symbol}=[:put, :get, :prefetchdownloadstream],
