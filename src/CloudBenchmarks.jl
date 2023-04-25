@@ -82,28 +82,30 @@ function runbenchmarks(creds::CloudBase.CloudCredentials, bucket::CloudBase.Abst
     )
     results = []
     for nwork in nworkers
-        workers = makeworkers(nwork, creds, bucket)
-        try
-            for type in tls
-                if type == :mbedtls
-                    HTTP.SOCKET_TYPE_TLS[] = MbedTLS.SSLContext
-                else
-                    @assert type == :openssl
-                    HTTP.SOCKET_TYPE_TLS[] = OpenSSL.SSLStream
-                end
-                for sem in semaphore_limit
-                    for op in operation
-                        for sz in sizes
-                            push!(results, runbenchmarks(creds, bucket, nthreads, nwork, type, sem, op, sz, ntimes, workers))
+        Base.retry(() -> begin
+            workers = makeworkers(nwork, creds, bucket)
+            try
+                for type in tls
+                    if type == :mbedtls
+                        HTTP.SOCKET_TYPE_TLS[] = MbedTLS.SSLContext
+                    else
+                        @assert type == :openssl
+                        HTTP.SOCKET_TYPE_TLS[] = OpenSSL.SSLStream
+                    end
+                    for sem in semaphore_limit
+                        for op in operation
+                            for sz in sizes
+                                push!(results, runbenchmarks(creds, bucket, nthreads, nwork, type, sem, op, sz, ntimes, workers))
+                            end
                         end
                     end
                 end
+            finally
+                for worker in workers
+                    release(worker_pool, Threads.nthreads(), worker)
+                end
             end
-        finally
-            for worker in workers
-                release(worker_pool, Threads.nthreads(), worker)
-            end
-        end
+        end; delays=3)()
     end
     return results
 end
