@@ -6,7 +6,7 @@ const VER = "post"
 
 const worker_pool = Pool{Int, Worker}()
 
-function runbenchmarks(cloud_machine_specs::String, creds::CloudBase.CloudCredentials, bucket::CloudBase.AbstractStore;
+function runbenchmarks(cloud_machine_specs::String, creds::Union{CloudBase.CloudCredentials, Function}, bucket::CloudBase.AbstractStore;
         nthreads::Vector{Int}=[16, 32, 64],
         nworkers::Vector{Int}=[0, 1, 3],
         tls::Vector{Symbol}=[:mbedtls, :openssl],
@@ -17,8 +17,6 @@ function runbenchmarks(cloud_machine_specs::String, creds::CloudBase.CloudCreden
     )
     results = []
     for nth in nthreads
-        # add a manual refresh of credentials
-        CloudBase.getCredentials(creds)
         # create our worker where we'll run the benchmark from
         worker = acquire(worker_pool, nth) do
             w = Worker(; threads=string(nth))
@@ -57,21 +55,18 @@ function makeworkers(n, creds, bucket)
     tasks = Task[]
     for _ = 1:n
         push!(tasks, Threads.@spawn begin
-            acquire(worker_pool, Threads.nthreads()) do
-                w = Worker(; threads=string(Threads.nthreads()))
-                remote_fetch(w, :(using CloudBenchmarks))
-                remote_fetch(w, quote
-                    const credentials = $creds
-                    const bucket = $bucket
-                end)
-                w
-            end
+            w = Worker(; threads=string(Threads.nthreads()))
+            remote_fetch(w, :(using CloudBenchmarks))
+            remote_fetch(w, quote
+                const credentials = $creds
+                const bucket = $bucket
+            end)
         end)
     end
     return Worker[fetch(task) for task in tasks]
 end
 
-function runbenchmarks(creds::CloudBase.CloudCredentials, bucket::CloudBase.AbstractStore,
+function runbenchmarks(creds::Union{CloudBase.CloudCredentials, Function}, bucket::CloudBase.AbstractStore,
         nthreads::Int,
         nworkers::Vector{Int},
         tls::Vector{Symbol},
@@ -82,26 +77,21 @@ function runbenchmarks(creds::CloudBase.CloudCredentials, bucket::CloudBase.Abst
     )
     results = []
     for nwork in nworkers
-        workers = makeworkers(nwork, creds, bucket)
-        try
-            for type in tls
-                if type == :mbedtls
-                    HTTP.SOCKET_TYPE_TLS[] = MbedTLS.SSLContext
-                else
-                    @assert type == :openssl
-                    HTTP.SOCKET_TYPE_TLS[] = OpenSSL.SSLStream
-                end
-                for sem in semaphore_limit
-                    for op in operation
-                        for sz in sizes
-                            push!(results, runbenchmarks(creds, bucket, nthreads, nwork, type, sem, op, sz, ntimes, workers))
-                        end
+        credentials = creds isa Function ? creds() : creds
+        workers = makeworkers(nwork, credentials, bucket)
+        for type in tls
+            if type == :mbedtls
+                HTTP.SOCKET_TYPE_TLS[] = MbedTLS.SSLContext
+            else
+                @assert type == :openssl
+                HTTP.SOCKET_TYPE_TLS[] = OpenSSL.SSLStream
+            end
+            for sem in semaphore_limit
+                for op in operation
+                    for sz in sizes
+                        push!(results, runbenchmarks(credentials, bucket, nthreads, nwork, type, sem, op, sz, ntimes, workers))
                     end
                 end
-            end
-        finally
-            for worker in workers
-                release(worker_pool, Threads.nthreads(), worker)
             end
         end
     end
