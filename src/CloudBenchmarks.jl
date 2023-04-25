@@ -61,6 +61,7 @@ function makeworkers(n, creds, bucket)
                 const credentials = $creds
                 const bucket = $bucket
             end)
+            w
         end)
     end
     return Worker[fetch(task) for task in tasks]
