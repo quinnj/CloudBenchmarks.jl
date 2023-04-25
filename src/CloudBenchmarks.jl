@@ -82,30 +82,28 @@ function runbenchmarks(creds::CloudBase.CloudCredentials, bucket::CloudBase.Abst
     )
     results = []
     for nwork in nworkers
-        Base.retry(() -> begin
-            workers = makeworkers(nwork, creds, bucket)
-            try
-                for type in tls
-                    if type == :mbedtls
-                        HTTP.SOCKET_TYPE_TLS[] = MbedTLS.SSLContext
-                    else
-                        @assert type == :openssl
-                        HTTP.SOCKET_TYPE_TLS[] = OpenSSL.SSLStream
-                    end
-                    for sem in semaphore_limit
-                        for op in operation
-                            for sz in sizes
-                                push!(results, runbenchmarks(creds, bucket, nthreads, nwork, type, sem, op, sz, ntimes, workers))
-                            end
+        workers = makeworkers(nwork, creds, bucket)
+        try
+            for type in tls
+                if type == :mbedtls
+                    HTTP.SOCKET_TYPE_TLS[] = MbedTLS.SSLContext
+                else
+                    @assert type == :openssl
+                    HTTP.SOCKET_TYPE_TLS[] = OpenSSL.SSLStream
+                end
+                for sem in semaphore_limit
+                    for op in operation
+                        for sz in sizes
+                            push!(results, runbenchmarks(creds, bucket, nthreads, nwork, type, sem, op, sz, ntimes, workers))
                         end
                     end
                 end
-            finally
-                for worker in workers
-                    release(worker_pool, Threads.nthreads(), worker)
-                end
             end
-        end; delays=3)()
+        finally
+            for worker in workers
+                release(worker_pool, Threads.nthreads(), worker)
+            end
+        end
     end
     return results
 end
@@ -135,23 +133,15 @@ function do_op(credentials, bucket, nm, pool, op, data, i)
         return len
     else
         @assert op == :put
-        acquired = false
-        if data === nothing
-            data = getdata(2^20)
-            acquired = true
-        end
-        try
-            obj = CloudStore.put(bucket, "data.$nm.$i", data; credentials, pool, logerrors=true, nowarn=true)
-            return obj.size
-        finally
-            acquired && release(buffer_pool, 2^20, data)
-        end
+        data = data === nothing ? rand(UInt8, 2^20) : data
+        obj = CloudStore.put(bucket, "data.$nm.$i", data; credentials, pool, logerrors=true, nowarn=true)
+        return obj.size
     end
 end
 
 function do_op_n(credentials, bucket, nm, semaphore_limit, op, n, size, i)
     pool = HTTP.Pool(semaphore_limit)
-    data = getdata(size)
+    data = op == :put ? rand(UInt8, size) : nothing
     nbytes = Threads.Atomic{Int}(0)
     @sync for j = 1:n
         Threads.@spawn begin
@@ -160,13 +150,8 @@ function do_op_n(credentials, bucket, nm, semaphore_limit, op, n, size, i)
             Threads.atomic_add!(nbytes, len)
         end
     end
-    release(buffer_pool, size, data)
     return nbytes[]
 end
-
-const buffer_pool = Pool{Int, Vector{UInt8}}()
-
-getdata(sz) = acquire(() -> rand(UInt8, sz), buffer_pool, sz)
 
 function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBase.AbstractStore,
         nthreads::Int,
