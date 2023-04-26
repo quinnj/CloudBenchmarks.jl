@@ -119,9 +119,10 @@ const SIZES = Dict(
     2^32 => ("4gb", 1),
 )
 
-function do_op(credentials, bucket, nm, pool, op, data, i)
+function do_op(credentials, bucket, nm, pool, op, size, data, i)
     if op == :get
-        return length(CloudStore.get(bucket, "data.$nm.$i"; credentials, pool, logerrors=true, nowarn=true))
+        out = Vector{UInt8}(undef, size)
+        return length(CloudStore.get(bucket, "data.$nm.$i", out; credentials, pool, logerrors=true, nowarn=true))
     elseif op == :prefetchdownloadstream
         m = Mmap.mmap(Vector{UInt8}, 2^25)
         len = 0
@@ -145,7 +146,7 @@ function do_op_n(credentials, bucket, nm, semaphore_limit, op, n, size, i)
     @sync for j = 1:n
         Threads.@spawn begin
             k = i * n + $j
-            len = do_op(credentials, bucket, nm, pool, op, data, k)
+            len = do_op(credentials, bucket, nm, pool, op, size, data, k)
             Threads.atomic_add!(nbytes, len)
         end
     end
