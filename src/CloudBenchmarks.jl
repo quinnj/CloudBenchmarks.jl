@@ -21,7 +21,7 @@ function runbenchmarks(cloud_machine_specs::String, creds::Union{CloudBase.Cloud
         # create our worker where we'll run the benchmark from
         if nth == Threads.nthreads()
             # don't need to run on a separate worker
-            CloudBenchmarks.runbenchmarks(creds, bucket, nth, nworkers, tls, semaphore_limit, operation, sizes, ntimes, profile)
+            append!(results, CloudBenchmarks.runbenchmarks(creds, bucket, nth, nworkers, tls, semaphore_limit, operation, sizes, ntimes, profile))
         else
             worker = acquire(worker_pool, nth) do
                 w = Worker(; threads=string(nth))
