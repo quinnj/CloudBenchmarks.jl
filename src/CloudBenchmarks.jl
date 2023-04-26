@@ -1,19 +1,20 @@
 module CloudBenchmarks
 
-using CloudStore, CloudBase, HTTP, MbedTLS, OpenSSL, ConcurrentUtilities, Mmap
+using CloudStore, CloudBase, HTTP, MbedTLS, OpenSSL, ConcurrentUtilities, Mmap, Profile
 
 const VER = "post"
 
 const worker_pool = Pool{Int, Worker}()
 
 function runbenchmarks(cloud_machine_specs::String, creds::Union{CloudBase.CloudCredentials, Function}, bucket::CloudBase.AbstractStore;
-        nthreads::Vector{Int}=[16, 32, 64],
+        nthreads::Vector{Int}=[Threads.nthreads()],
         nworkers::Vector{Int}=[0],
-        tls::Vector{Symbol}=[:mbedtls, :openssl],
-        semaphore_limit::Vector{Int}=[512],
+        tls::Vector{Symbol}=[:openssl],
+        semaphore_limit::Vector{Int}=[4 * Threads.nthreads()],
         operation::Vector{Symbol}=[:put, :get, :prefetchdownloadstream],
         sizes::Vector{Int}=[2^20, 2^21, 2^22, 2^23, 2^26, 2^28, 2^30, 2^32],
         ntimes::Int=3,
+        profile::Bool=false,
     )
     results = []
     for nth in nthreads
@@ -34,6 +35,7 @@ function runbenchmarks(cloud_machine_specs::String, creds::Union{CloudBase.Cloud
                     $operation,
                     $sizes,
                     $ntimes,
+                    $profile,
                 )
             end))
         finally
@@ -75,6 +77,7 @@ function runbenchmarks(creds::Union{CloudBase.CloudCredentials, Function}, bucke
         operation::Vector{Symbol},
         sizes::Vector{Int},
         ntimes::Int,
+        profile::Bool
     )
     results = []
     for nwork in nworkers
@@ -90,7 +93,7 @@ function runbenchmarks(creds::Union{CloudBase.CloudCredentials, Function}, bucke
             for sem in semaphore_limit
                 for op in operation
                     for sz in sizes
-                        push!(results, runbenchmarks(credentials, bucket, nthreads, nwork, type, sem, op, sz, ntimes, workers))
+                        push!(results, runbenchmarks(credentials, bucket, nthreads, nwork, type, sem, op, sz, ntimes, profile, workers))
                     end
                 end
             end
@@ -152,6 +155,7 @@ function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBas
         operation::Symbol,
         size::Int,
         ntimes::Int,
+        profile::Bool,
         workers::Vector{Worker},
     )
     nm, nparts = SIZES[size]
@@ -187,8 +191,15 @@ function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBas
         return gbits_per_second
     end
     curmax = 0.0
-    for _ = 1:ntimes
-        curmax = max(curmax, tester())
+    if profile
+        Profile.clear()
+        @profile for _ = 1:ntimes
+            curmax = max(curmax, tester())
+        end
+    else
+        for _ = 1:ntimes
+            curmax = max(curmax, tester())
+        end
     end
     return (; nthreads, nworkers, tls, semaphore_limit, operation, size=nm, rate=curmax)
 end
