@@ -19,27 +19,32 @@ function runbenchmarks(cloud_machine_specs::String, creds::Union{CloudBase.Cloud
     results = []
     for nth in nthreads
         # create our worker where we'll run the benchmark from
-        worker = acquire(worker_pool, nth) do
-            w = Worker(; threads=string(nth))
-            remote_fetch(w, :(using CloudBenchmarks))
-            w
-        end
-        try
-            append!(results, remote_fetch(worker, quote
-                CloudBenchmarks.runbenchmarks(
-                    $creds, $bucket,
-                    $nth,
-                    $nworkers,
-                    $tls,
-                    $semaphore_limit,
-                    $operation,
-                    $sizes,
-                    $ntimes,
-                    $profile,
-                )
-            end))
-        finally
-            release(worker_pool, nth, worker)
+        if nth == Threads.nthreads()
+            # don't need to run on a separate worker
+            CloudBenchmarks.runbenchmarks(creds, bucket, nth, nworkers, tls, semaphore_limit, operation, sizes, ntimes, profile)
+        else
+            worker = acquire(worker_pool, nth) do
+                w = Worker(; threads=string(nth))
+                remote_fetch(w, :(using CloudBenchmarks))
+                w
+            end
+            try
+                append!(results, remote_fetch(worker, quote
+                    CloudBenchmarks.runbenchmarks(
+                        $creds, $bucket,
+                        $nth,
+                        $nworkers,
+                        $tls,
+                        $semaphore_limit,
+                        $operation,
+                        $sizes,
+                        $ntimes,
+                        $profile,
+                    )
+                end))
+            finally
+                release(worker_pool, nth, worker)
+            end
         end
     end
     file = "$cloud_machine_specs.tsv"
