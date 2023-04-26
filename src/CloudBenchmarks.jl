@@ -119,10 +119,9 @@ const SIZES = Dict(
     2^32 => ("4gb", 1),
 )
 
-function do_op(credentials, bucket, nm, pool, op, size, data, i)
+function do_op(credentials, bucket, nm, pool, op, data, i)
     if op == :get
-        out = Vector{UInt8}(undef, size)
-        return length(CloudStore.get(bucket, "data.$nm.$i", out; credentials, pool, logerrors=true, nowarn=true))
+        return length(CloudStore.get(bucket, "data.$nm.$i"; credentials, pool, logerrors=true, nowarn=true))
     elseif op == :prefetchdownloadstream
         m = Mmap.mmap(Vector{UInt8}, 2^25)
         len = 0
@@ -146,7 +145,7 @@ function do_op_n(credentials, bucket, nm, semaphore_limit, op, n, size, i)
     @sync for j = 1:n
         Threads.@spawn begin
             k = i * n + $j
-            len = do_op(credentials, bucket, nm, pool, op, size, data, k)
+            len = do_op(credentials, bucket, nm, pool, op, data, k)
             Threads.atomic_add!(nbytes, len)
         end
     end
@@ -171,11 +170,11 @@ function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBas
         futures = []
         for (i, worker) in enumerate(workers)
             push!(futures, remote_eval(worker, quote
-                CloudBenchmarks.do_op(credentials, bucket, string("1mb.", $i), nothing, $(Meta.quot(operation)), size, nothing, 1)
+                CloudBenchmarks.do_op(credentials, bucket, string("1mb.", $i), nothing, $(Meta.quot(operation)), nothing, 1)
             end))
         end
         # on on coordinator
-        do_op(credentials, bucket, "1mb.0", nothing, operation, size, nothing, 1)
+        do_op(credentials, bucket, "1mb.0", nothing, operation, nothing, 1)
         foreach(fetch, futures)
         empty!(futures)
         @debug "done warming up"
