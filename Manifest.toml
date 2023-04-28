@@ -354,7 +354,7 @@ version = "0.3.21+4"
 
 [[deps.OpenSSL]]
 deps = ["BitFlags", "Dates", "MozillaCACerts_jll", "OpenSSL_jll", "Sockets"]
-git-tree-sha1 = "8f0727a7093d3a761b3bc79f636de95b6725070b"
+git-tree-sha1 = "99a17ca8ecc6e9747f4cf2d81439aa6089679efa"
 repo-rev = "jq-lock"
 repo-url = "https://github.com/JuliaWeb/OpenSSL.jl.git"
 uuid = "4d8831e6-92b7-49fb-bdf8-b643e874388c"
