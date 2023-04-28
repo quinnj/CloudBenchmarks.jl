@@ -194,7 +194,9 @@ version = "2.50.0+1"
 
 [[deps.HTTP]]
 deps = ["Base64", "CodecZlib", "ConcurrentUtilities", "Dates", "Logging", "LoggingExtras", "MbedTLS", "NetworkOptions", "OpenSSL", "Random", "SimpleBufferStream", "Sockets", "URIs", "UUIDs"]
-git-tree-sha1 = "69182f9a2d6add3736b7a06ab6416aafdeec2196"
+git-tree-sha1 = "d5325dc06e2f8c4a0f3f13233a25e551602322c4"
+repo-rev = "jq-threadsafe"
+repo-url = "https://github.com/JuliaWeb/HTTP.jl.git"
 uuid = "cd3eb016-35fb-5094-929b-558a96fad6f3"
 version = "1.8.0"
 
@@ -352,7 +354,9 @@ version = "0.3.21+4"
 
 [[deps.OpenSSL]]
 deps = ["BitFlags", "Dates", "MozillaCACerts_jll", "OpenSSL_jll", "Sockets"]
-git-tree-sha1 = "7fb975217aea8f1bb360cf1dde70bad2530622d2"
+git-tree-sha1 = "8f0727a7093d3a761b3bc79f636de95b6725070b"
+repo-rev = "jq-lock"
+repo-url = "https://github.com/JuliaWeb/OpenSSL.jl.git"
 uuid = "4d8831e6-92b7-49fb-bdf8-b643e874388c"
 version = "1.4.0"
 
