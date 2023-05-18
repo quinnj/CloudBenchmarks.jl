@@ -12,7 +12,7 @@ function runbenchmarks(cloud_machine_specs::String, creds::Union{CloudBase.Cloud
         tls::Vector{Symbol}=[:openssl],
         semaphore_limit::Vector{Int}=[4 * Threads.nthreads()],
         operation::Vector{Symbol}=[:put, :get, :prefetchdownloadstream],
-        sizes::Vector{Int}=[2^20, 2^21, 2^22, 2^23, 2^26, 2^28, 2^30, 2^32],
+        sizes::Vector{Int}=[2^18, 2^20, 2^21, 2^22, 2^23, 2^26, 2^28, 2^30, 2^32],
         ntimes::Int=3,
         profile::Bool=false,
     )
@@ -109,6 +109,7 @@ end
 
 # [2^20, 2^21, 2^22, 2^23, 2^26, 2^28, 2^30, 2^32]
 const SIZES = Dict(
+    2^18 => ("256kb", 16384),
     2^20 => ("1mb", 4096),
     2^21 => ("2mb", 2048),
     2^22 => ("4mb", 1024),
