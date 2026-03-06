@@ -1,6 +1,6 @@
 module CloudBenchmarks
 
-using CloudStore, CloudBase, HTTP, MbedTLS, OpenSSL, ConcurrentUtilities, Mmap, Profile
+using CloudStore, CloudBase, ConcurrentUtilities, Mmap, Profile
 
 const VER = "post"
 
@@ -89,12 +89,7 @@ function runbenchmarks(creds::Union{CloudBase.CloudCredentials, Function}, bucke
         credentials = creds isa Function ? creds() : creds
         workers = makeworkers(nwork, credentials, bucket)
         for type in tls
-            if type == :mbedtls
-                HTTP.SOCKET_TYPE_TLS[] = MbedTLS.SSLContext
-            else
-                @assert type == :openssl
-                HTTP.SOCKET_TYPE_TLS[] = OpenSSL.SSLStream
-            end
+            (type == :openssl || type == :reseau) || throw(ArgumentError("Reseau-backed benchmarks only support `:openssl`/`:reseau` TLS labels; got `$type`"))
             for sem in semaphore_limit
                 for op in operation
                     for sz in sizes
@@ -140,17 +135,21 @@ function do_op(credentials, bucket, nm, pool, op, data, i)
 end
 
 function do_op_n(credentials, bucket, nm, semaphore_limit, op, n, size, i)
-    pool = HTTP.Pool(semaphore_limit)
-    data = op == :put ? rand(UInt8, size) : nothing
-    nbytes = Threads.Atomic{Int}(0)
-    @sync for j = 1:n
-        Threads.@spawn begin
-            k = i * n + $j
-            len = do_op(credentials, bucket, nm, pool, op, data, k)
-            Threads.atomic_add!(nbytes, len)
+    pool = CloudBase.CloudPool(semaphore_limit)
+    try
+        data = op == :put ? rand(UInt8, size) : nothing
+        nbytes = Threads.Atomic{Int}(0)
+        @sync for j = 1:n
+            errormonitor(Threads.@spawn begin
+                k = i * n + $j
+                len = do_op(credentials, bucket, nm, pool, op, data, k)
+                Threads.atomic_add!(nbytes, len)
+            end)
         end
+        return nbytes[]
+    finally
+        close(pool)
     end
-    return nbytes[]
 end
 
 function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBase.AbstractStore,
