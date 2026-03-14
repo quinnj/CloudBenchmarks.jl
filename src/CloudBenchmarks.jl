@@ -6,6 +6,15 @@ const VER = "post"
 
 const worker_pool = Pool{Int, Worker}()
 
+@inline _sizes_snapshot() = Dict(size => (label, nparts) for (size, (label, nparts)) in SIZES)
+
+function _install_sizes!(snapshot::AbstractDict{Int, <:Tuple})
+    for (size, value) in snapshot
+        SIZES[size] = value
+    end
+    return nothing
+end
+
 function runbenchmarks(cloud_machine_specs::String, creds::Union{CloudBase.CloudCredentials, Function}, bucket::CloudBase.AbstractStore;
         nthreads::Vector{Int}=[Threads.nthreads()],
         nworkers::Vector{Int}=[0],
@@ -17,6 +26,7 @@ function runbenchmarks(cloud_machine_specs::String, creds::Union{CloudBase.Cloud
         profile::Bool=false,
     )
     results = []
+    sizes_snapshot = _sizes_snapshot()
     for nth in nthreads
         # create our worker where we'll run the benchmark from
         if nth == Threads.nthreads()
@@ -25,7 +35,10 @@ function runbenchmarks(cloud_machine_specs::String, creds::Union{CloudBase.Cloud
         else
             worker = acquire(worker_pool, nth) do
                 w = Worker(; threads=string(nth))
-                remote_fetch(w, :(using CloudBenchmarks))
+                remote_fetch(w, quote
+                    using CloudBenchmarks
+                    CloudBenchmarks._install_sizes!($sizes_snapshot)
+                end)
                 w
             end
             try
@@ -60,10 +73,14 @@ end
 
 function makeworkers(n, creds, bucket)
     tasks = Task[]
+    sizes_snapshot = _sizes_snapshot()
     for _ = 1:n
         push!(tasks, Threads.@spawn begin
             w = Worker(; threads=string(Threads.nthreads()))
-            remote_fetch(w, :(using CloudBenchmarks))
+            remote_fetch(w, quote
+                using CloudBenchmarks
+                CloudBenchmarks._install_sizes!($sizes_snapshot)
+            end)
             remote_fetch(w, quote
                 const credentials = $creds
                 const bucket = $bucket

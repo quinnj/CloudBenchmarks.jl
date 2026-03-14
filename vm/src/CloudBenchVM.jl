@@ -95,6 +95,7 @@ function instantiate_project!(project_dir::AbstractString = normpath(joinpath(@_
     else
         Pkg.activate(project_dir)
     end
+    ENV["JULIA_PROJECT"] = Base.active_project()
     Pkg.instantiate()
     return nothing
 end
