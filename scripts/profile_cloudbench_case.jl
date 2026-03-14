@@ -3,15 +3,8 @@ using CloudBenchVM
 const ROOT_DIR = normpath(joinpath(@__DIR__, ".."))
 const VM_DIR = joinpath(ROOT_DIR, "vm")
 const ROOT_ENV_FILE = joinpath(ROOT_DIR, ".env")
-
-function env_file_for(provider::String)
-    provider == "gcp" && return joinpath(VM_DIR, "bench.env")
-    provider == "azure" && return joinpath(VM_DIR, "azure.env")
-    error("unsupported CLOUDBENCH_PROVIDER=$(repr(provider)); expected `gcp` or `azure`")
-end
-
-provider_name = lowercase(get(ENV, "CLOUDBENCH_PROVIDER", "azure"))
-env_file = get(ENV, "CLOUDBENCH_ENV_FILE", env_file_for(provider_name))
+provider_name = CloudBenchVM.provider_name("azure")
+env_file = get(ENV, "CLOUDBENCH_ENV_FILE", CloudBenchVM.default_env_file(VM_DIR, provider_name))
 CloudBenchVM.load_env_file!(ROOT_ENV_FILE; optional=true)
 env_file != ROOT_ENV_FILE && CloudBenchVM.load_env_file!(env_file; optional=true)
 CloudBenchVM.instantiate_project!(VM_DIR)

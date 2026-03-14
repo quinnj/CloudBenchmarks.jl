@@ -369,6 +369,46 @@
   - A focused multipart header reuse microbench over 2000 iterations improved from `99.4 μs` and `416 kB` allocated with per-part header copying to `46.1 μs` and `0 B` allocated with reusable header slots, about `2.16x` faster with allocation eliminated.
   - A coordination-only prototype for streamed multipart downloads showed the current batch flush (`0.0261 s`, `5.92 MB`) outperforming a per-batch local `Condition` writer (`0.1038 s`, `8.61 MB`), so `OrderedSynchronizer` was removed rather than replaced with another general-purpose ordered primitive under the current batched launcher.
 
+### [x] ITEM-013 (P0) Unify CloudBenchmarks VM Bootstrap And Env-Driven Runner Flow
+- Description: `CloudBenchmarks` still has an awkward split between a misnamed setup script, separate provider-specific run entrypoints, and incomplete project source pinning. Azure is also still effectively routed through a smoke-specific script instead of the same generic benchmark matrix path we want for a real beefy-VM rerun.
+- Desired outcome: the repo has one Ubuntu VM bootstrap script, one env-driven benchmark runner that works for both GCP and Azure, root/vm project setup pins the intended `CloudBase` / `CloudStore` / `Reseau` branches, and the resulting flow is verified locally so the next beefy-Azure benchmark pass can use it directly.
+- Worktree: `/Users/jacob.quinn/.julia/dev/CloudBenchmarks`
+- Affected files: `Project.toml`, `Manifest.toml`, `README.md`, `scripts/setup-cloudbench-vm.sh`, `scripts/setup-gcp-vm.sh`, `scripts/run-cloudbench.sh`, `scripts/run-gcp-cloudbench.sh`, `scripts/run-azure-cloud-smoke.sh`, `scripts/run-cloudbench-profile.sh`, `scripts/run_cloudbench.jl`, `scripts/profile_cloudbench_case.jl`, `scripts/install-jq-reseau-http.sh`, `vm/Project.toml`, `vm/bench.env.example`, `vm/azure.env.example`, `vm/src/CloudBenchVM.jl`
+- Implementation notes:
+  - Replace the current setup script naming/layout with a single Ubuntu-oriented bootstrap entrypoint.
+  - Collapse provider-specific benchmark execution into one generic runner keyed by `CLOUDBENCH_PROVIDER` and `CLOUDBENCH_PROFILE`, leaving only trivial provider wrappers if they still add value as shortcuts.
+  - Ensure both the root project and VM project point at the intended branch-pinned `CloudBase` / `CloudStore` / `Reseau` sources so a fresh `Pkg.instantiate()` lands on the right stack without manual `develop`.
+  - Keep profile execution generic and aligned with the same env-loading/bootstrap path.
+  - Validate with dry runs and at least a small local Azure smoke pass after the runner cleanup so the next remote Azure rerun uses a known-good flow.
+- Verification:
+  - `bash -n <updated setup script>`
+  - `bash -n <updated generic runner script>`
+  - `bash -n scripts/run-cloudbench-profile.sh`
+  - `julia --project=. --startup-file=no --history-file=no -e 'using Pkg; Pkg.instantiate(); println("root_instantiate_ok")'`
+  - `julia --project=vm --startup-file=no --history-file=no -e 'using Pkg; Pkg.instantiate(); println("vm_instantiate_ok")'`
+  - `CLOUDBENCH_DRY_RUN=1 CLOUDBENCH_SKIP_INSTANTIATE=1 CLOUDBENCH_PROVIDER=gcp bash <updated generic runner script>`
+  - `CLOUDBENCH_DRY_RUN=1 CLOUDBENCH_SKIP_INSTANTIATE=1 CLOUDBENCH_PROVIDER=azure bash <updated generic runner script>`
+  - `env JULIA_NUM_THREADS=4 CLOUDBENCH_PROVIDER=azure CLOUDBENCH_PROFILE=smoke ... bash <updated generic runner script>`
+- Assumptions:
+  - The desired pinned stack today is `CloudBase#jq-reseau-http`, `CloudStore#jq-reseau-http`, and the current `Reseau` perf branch rather than plain `main`, because the point is to rerun the beefy-Azure benchmark against the new transport work before merge.
+  - Root and `vm` projects should both carry `[sources]` so a fresh checkout can be instantiated directly in either location without depending on a one-off install script.
+  - Provider-specific wrappers are only worth keeping if they become trivial convenience frontends over the generic runner; the benchmark logic itself should live in one place.
+  - Verifying from `mac.lan` against Azure is sufficient to prove the runner flow is healthy even though it is not comparable to the earlier beefy-Azure throughput session.
+- Risks:
+  - Changing project source pinning can perturb manifests or accidentally pin the wrong branch if the intended stack is not recorded clearly.
+  - Renaming setup/run scripts can leave stale README paths or older muscle-memory entrypoints behind if the docs are not updated carefully.
+- Completion criteria:
+  - `CloudBenchmarks` has one shared VM bootstrap path, one env-driven benchmark runner, branch-pinned project sources, verified dry runs, and a successful local Azure smoke validation committed as a single item.
+- Verification evidence:
+  - `bash -n scripts/setup-cloudbench-vm.sh`, `bash -n scripts/run-cloudbench.sh`, and `bash -n scripts/run-cloudbench-profile.sh` all passed after consolidating the entrypoints.
+  - `julia --project=. --startup-file=no --history-file=no -e 'using Pkg; Pkg.resolve(); Pkg.instantiate(); println("root_instantiate_ok")'` passed after adding root `[sources]` and dropping the stale `WorkerUtilities` manifest entry.
+  - `julia --project=vm --startup-file=no --history-file=no -e 'using Pkg; Pkg.resolve(); Pkg.instantiate(); println("vm_instantiate_ok")'` passed after pinning the VM project to `Reseau#jq-reseau-http-perf-pass`.
+  - `CLOUDBENCH_DRY_RUN=1 CLOUDBENCH_SKIP_INSTANTIATE=1 CLOUDBENCH_PROVIDER=gcp CLOUDBENCH_GCP_BUCKET=dryrun-bucket CLOUDBENCH_GCP_ACCESS_TOKEN=dryrun-token bash scripts/run-cloudbench.sh` printed the resolved full GCP matrix successfully.
+  - `CLOUDBENCH_DRY_RUN=1 CLOUDBENCH_SKIP_INSTANTIATE=1 CLOUDBENCH_PROVIDER=azure bash scripts/run-cloudbench.sh` printed the resolved full Azure matrix successfully.
+  - `CLOUDBENCH_DRY_RUN=1 CLOUDBENCH_SKIP_INSTANTIATE=1 CLOUDBENCH_PROVIDER=azure bash scripts/run-cloudbench-profile.sh` printed the resolved generic profiling case successfully.
+  - `env JULIA_NUM_THREADS=4 CLOUDBENCH_PROVIDER=azure CLOUDBENCH_PROFILE=smoke CLOUDBENCH_NTHREADS=4 CLOUDBENCH_SEMAPHORE_LIMITS=8 CLOUDBENCH_OPERATIONS=put CLOUDBENCH_SMOKE_SIZE=1048576 CLOUDBENCH_SMOKE_PARTS=4 CLOUDBENCH_MACHINE_SPECS=mac.lan-azure-smoke-unified bash scripts/run-cloudbench.sh` completed successfully and wrote `vm/results/mac.lan-azure-smoke-unified.tsv` with a `1mb put` smoke rate of `0.03715999237335977 Gbps`.
+  - The unified runner also fixed two correctness issues discovered during validation: spawned benchmark workers now inherit the active VM project via `JULIA_PROJECT`, and smoke size/part overrides are propagated into worker-side `CloudBenchmarks.SIZES` state instead of silently falling back to the default full matrix.
+
 ## Continuity
 
 ```text

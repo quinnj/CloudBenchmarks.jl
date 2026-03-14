@@ -22,7 +22,7 @@ sync_repo() {
     git -C "${path}" pull --ff-only origin "${rev}"
 }
 
-sync_repo "Reseau" "https://github.com/JuliaServices/Reseau.jl.git" "main"
+sync_repo "Reseau" "https://github.com/JuliaServices/Reseau.jl.git" "jq-reseau-http-perf-pass"
 sync_repo "CloudBase" "https://github.com/JuliaServices/CloudBase.jl.git" "jq-reseau-http"
 sync_repo "CloudStore" "https://github.com/JuliaServices/CloudStore.jl.git" "jq-reseau-http"
 

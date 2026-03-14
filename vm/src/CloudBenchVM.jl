@@ -8,6 +8,7 @@ export AzureConfig,
     BenchmarkConfig,
     GCPConfig,
     apply_size_part_overrides!,
+    default_env_file,
     default_container_name,
     default_machine_specs,
     getenv_first,
@@ -22,6 +23,8 @@ export AzureConfig,
     parse_int_vector_env,
     parse_symbol_env,
     parse_symbol_vector_env,
+    parse_string_env,
+    provider_name,
     require_env,
     resolve_output_dir,
     split_csv
@@ -160,9 +163,24 @@ function parse_bool_env(name::String, default::Bool)::Bool
     error("invalid boolean value for $name: $(repr(raw))")
 end
 
+function parse_bool_env(names::AbstractVector{<:AbstractString}, default::Bool)::Bool
+    raw = getenv_first(names)
+    raw === nothing && return default
+    raw_l = lowercase(strip(raw))
+    raw_l in ("1", "true", "yes", "y", "on") && return true
+    raw_l in ("0", "false", "no", "n", "off") && return false
+    error("invalid boolean value for $(join(names, ", ")): $(repr(raw))")
+end
+
 function parse_int_env(name::String, default::Int)::Int
     raw = strip(get(ENV, name, ""))
     isempty(raw) && return default
+    return parse(Int, raw)
+end
+
+function parse_int_env(names::AbstractVector{<:AbstractString}, default::Int)::Int
+    raw = getenv_first(names)
+    raw === nothing && return default
     return parse(Int, raw)
 end
 
@@ -170,6 +188,12 @@ function parse_symbol_env(name::String, default::Symbol)::Symbol
     raw = strip(get(ENV, name, ""))
     isempty(raw) && return default
     return Symbol(raw)
+end
+
+function parse_string_env(name::String, default::String)::String
+    raw = strip(get(ENV, name, ""))
+    isempty(raw) && return default
+    return raw
 end
 
 function parse_int_vector_env(name::String, default::Vector{Int})::Vector{Int}
@@ -194,6 +218,39 @@ function default_container_name()::String
     stamp = Dates.format(Dates.now(Dates.UTC), dateformat"yyyymmddHHMMSS")
     suffix = lowercase(string(time_ns(), base=16))
     return string("cbsmoke-", stamp, "-", suffix[max(1, end - 7):end])
+end
+
+function provider_name(default::String = "")
+    provider = lowercase(strip(get(ENV, "CLOUDBENCH_PROVIDER", "")))
+    if isempty(provider)
+        has_gcp = getenv_first([
+            "CLOUDBENCH_GCP_BUCKET",
+            "CLOUDBENCH_GCP_ACCESS_TOKEN",
+            "CLOUDBASE_GCP_LIVE_ACCESS_TOKEN",
+            "GOOGLE_APPLICATION_CREDENTIALS",
+        ]) !== nothing
+        has_azure = getenv_first([
+            "CLOUDBENCH_AZURE_CONNECTION_STRING",
+            "AZURE_STORAGE_CONNECTION_STRING",
+            "CLOUDBENCH_AZURE_ACCOUNT",
+            "AZURE_STORAGE_ACCOUNT",
+            "CLOUDBENCH_AZURE_ACCESS_TOKEN",
+            "AZURE_STORAGE_ACCESS_TOKEN",
+            "AZURE_STORAGE_SAS_TOKEN",
+        ]) !== nothing
+        if has_gcp != has_azure
+            provider = has_gcp ? "gcp" : "azure"
+        else
+            provider = lowercase(default)
+        end
+    end
+    provider in ("gcp", "azure") || error("unable to determine benchmark provider; set CLOUDBENCH_PROVIDER to `gcp` or `azure`")
+    return provider
+end
+
+function default_env_file(project_dir::AbstractString, provider::AbstractString)::String
+    provider_name(String(provider)) == "gcp" && return joinpath(project_dir, "bench.env")
+    return joinpath(project_dir, "azure.env")
 end
 
 function load_benchmark_config(;

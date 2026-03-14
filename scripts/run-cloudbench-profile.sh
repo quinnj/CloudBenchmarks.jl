@@ -8,7 +8,7 @@ PROVIDER="${CLOUDBENCH_PROVIDER:-azure}"
 export PATH="${HOME}/.juliaup/bin:${PATH}"
 
 if ! command -v julia >/dev/null 2>&1; then
-    echo "julia not found on PATH; run scripts/setup-gcp-vm.sh first" >&2
+    echo "julia not found on PATH; run scripts/setup-cloudbench-vm.sh first" >&2
     exit 1
 fi
 

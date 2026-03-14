@@ -11,6 +11,12 @@ HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
 Mmap = "a63ad114-7e13-5084-954f-fe012c677804"
 PProf = "e4faabce-9ead-11e9-39d9-4379958e3056"
 Profile = "9abbd945-dff8-562f-b5e8-e1ebf5ef1b79"
+Reseau = "802f3686-a58f-41ce-bb0c-3c43c75bba36"
+
+[sources]
+CloudBase = {url = "https://github.com/JuliaServices/CloudBase.jl.git", rev = "jq-reseau-http"}
+CloudStore = {url = "https://github.com/JuliaServices/CloudStore.jl.git", rev = "jq-reseau-http"}
+Reseau = {url = "https://github.com/JuliaServices/Reseau.jl.git", rev = "jq-reseau-http-perf-pass"}
 
 [compat]
 HTTP = "1.10.19"
