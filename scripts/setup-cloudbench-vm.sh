@@ -44,6 +44,19 @@ install_juliaup() {
     return 0
 }
 
+install_node_and_codex() {
+    export NVM_DIR="${HOME}/.nvm"
+    if [[ ! -s "${NVM_DIR}/nvm.sh" ]]; then
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+    fi
+    # shellcheck source=/dev/null
+    [[ -s "${NVM_DIR}/nvm.sh" ]] && . "${NVM_DIR}/nvm.sh"
+    nvm install --lts
+    nvm use --lts
+    npm install -g @openai/codex@latest
+    return 0
+}
+
 sync_repo() {
     local url="$1"
     local branch="$2"
@@ -90,6 +103,7 @@ Pkg.status(; mode=Pkg.PKGMODE_MANIFEST)
 main() {
     install_system_packages
     install_juliaup
+    install_node_and_codex
     sync_repo "${REPO_URL}" "${REPO_BRANCH}" "${REPO_DIR}"
     export PATH="${HOME}/.juliaup/bin:${PATH}"
     initialize_runner_files "${REPO_DIR}"
@@ -100,6 +114,8 @@ VM bootstrap complete.
 
 Repo: ${REPO_DIR}
 Julia channel: ${JULIA_CHANNEL}
+Node.js: $(command -v node >/dev/null && node -v || echo 'installed')
+Codex CLI: installed
 Runner project: ${REPO_DIR}/vm/Project.toml
 
 Next steps:
