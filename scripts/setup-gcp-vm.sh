@@ -81,7 +81,10 @@ authors = ["quinnj <quinn.jacobd@gmail.com>"]
 CloudBase = "85eb1798-d7c4-4918-bb13-c944d38e27ed"
 CloudBenchmarks = "128a3188-ac61-41e7-9373-75758cb91c5b"
 CloudStore = "3365d9ee-d53b-4a56-812d-5344d5b716d7"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 Reseau = "802f3686-a58f-41ce-bb0c-3c43c75bba36"
+Sockets = "6462fe0b-24de-5631-8697-dd941f90decc"
 
 [sources]
 CloudBase = {url = "${CLOUDBASE_URL}", rev = "${CLOUDBASE_BRANCH}"}
@@ -91,6 +94,9 @@ Reseau = {url = "${RESEAU_URL}", rev = "${RESEAU_BRANCH}"}
 EOF
     if [[ ! -f "${vm_dir}/bench.env" ]]; then
         cp "${vm_dir}/bench.env.example" "${vm_dir}/bench.env"
+    fi
+    if [[ ! -f "${vm_dir}/azure.env" ]]; then
+        cp "${vm_dir}/azure.env.example" "${vm_dir}/azure.env"
     fi
     return 0
 }
@@ -118,7 +124,10 @@ Runner project: ${vm_dir}/Project.toml
 
 Next steps:
 1. Edit ${vm_dir}/bench.env
-2. Run: ${REPO_DIR}/scripts/run-gcp-cloudbench.sh
+2. Optional Azure config: ${vm_dir}/azure.env
+3. Run GCP: ${REPO_DIR}/scripts/run-gcp-cloudbench.sh
+4. Run Azure smoke: ${REPO_DIR}/scripts/run-azure-cloud-smoke.sh
+5. Profile one case: ${REPO_DIR}/scripts/run-cloudbench-profile.sh
 
 MSG
     return 0
