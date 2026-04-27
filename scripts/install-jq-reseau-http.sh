@@ -32,7 +32,7 @@ using Pkg
 
 root, devdir = ARGS
 Pkg.activate(root)
-Pkg.resolve()
+Pkg.update()
 Pkg.instantiate()
 Pkg.precompile()
 Pkg.status(["CloudBase", "CloudStore", "HTTP", "Reseau"]; mode=Pkg.PKGMODE_MANIFEST)
