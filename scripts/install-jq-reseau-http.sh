@@ -32,12 +32,22 @@ using Pkg
 
 root, devdir = ARGS
 Pkg.activate(root)
-for name in ("Reseau", "HTTP", "CloudBase", "CloudStore")
-    Pkg.develop(path=joinpath(devdir, name))
-end
-
 Pkg.resolve()
 Pkg.instantiate()
 Pkg.precompile()
 Pkg.status(["CloudBase", "CloudStore", "HTTP", "Reseau"]; mode=Pkg.PKGMODE_MANIFEST)
 ' "${ROOT_DIR}" "${DEV_DIR}"
+
+CLOUDBASE_PATH="${DEV_DIR}/CloudBase" \
+CLOUDSTORE_PATH="${DEV_DIR}/CloudStore" \
+HTTP_PATH="${DEV_DIR}/HTTP" \
+RESEAU_PATH="${DEV_DIR}/Reseau" \
+"${JULIA_BIN}" --startup-file=no --project="${ROOT_DIR}/vm" -e '
+using Pkg
+using CloudBenchVM
+
+vm_dir = ARGS[1]
+CloudBenchVM.instantiate_project!(vm_dir)
+Pkg.precompile()
+Pkg.status(["CloudBase", "CloudStore", "HTTP", "Reseau"]; mode=Pkg.PKGMODE_MANIFEST)
+' "${ROOT_DIR}/vm"

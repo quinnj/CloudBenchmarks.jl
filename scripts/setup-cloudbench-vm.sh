@@ -106,6 +106,13 @@ instantiate_runner_env() {
     local vm_dir="${repo_dir}/vm"
     julia --startup-file=no --project="${vm_dir}" -e '
 using Pkg
+general_toml = joinpath(first(DEPOT_PATH), "registries", "General.toml")
+general_git = joinpath(first(DEPOT_PATH), "registries", "General")
+if !isfile(general_toml) && !isdir(general_git)
+    Pkg.Registry.add("General")
+else
+    Pkg.Registry.update()
+end
 Pkg.resolve()
 Pkg.instantiate()
 Pkg.precompile()
