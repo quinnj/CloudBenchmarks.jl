@@ -59,9 +59,10 @@ struct AzureConfig
 end
 
 const _LOCAL_SOURCE_OVERRIDES = (
+    "HTTP" => "HTTP_PATH",
+    "Reseau" => "RESEAU_PATH",
     "CloudBase" => "CLOUDBASE_PATH",
     "CloudStore" => "CLOUDSTORE_PATH",
-    "Reseau" => "RESEAU_PATH",
 )
 
 function _resolve_local_source_path(project_dir::AbstractString, path::AbstractString)::String
@@ -79,7 +80,6 @@ function _activate_local_overlay_env!(project_dir::AbstractString)
     overlay_dir = joinpath(project_dir, ".local-overrides")
     mkpath(overlay_dir)
     Pkg.activate(overlay_dir)
-    Pkg.develop(; path=normpath(joinpath(project_dir, "..")))
     for (pkg_name, env_name) in _LOCAL_SOURCE_OVERRIDES
         raw_path = strip(get(ENV, env_name, ""))
         isempty(raw_path) && continue
@@ -88,6 +88,7 @@ function _activate_local_overlay_env!(project_dir::AbstractString)
         _ = pkg_name
         Pkg.develop(; path=resolved)
     end
+    Pkg.develop(; path=normpath(joinpath(project_dir, "..")))
     return nothing
 end
 

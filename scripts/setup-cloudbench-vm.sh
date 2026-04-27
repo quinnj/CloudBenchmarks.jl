@@ -6,9 +6,20 @@ if [[ -n "${TRACE:-}" ]]; then
 fi
 
 REPO_URL="${CLOUDBENCHMARKS_URL:-https://github.com/quinnj/CloudBenchmarks.jl.git}"
-REPO_BRANCH="${CLOUDBENCHMARKS_BRANCH:-jq-reseau-http}"
-REPO_DIR="${CLOUDBENCHMARKS_DIR:-${HOME}/CloudBenchmarks}"
+REPO_BRANCH="${CLOUDBENCHMARKS_BRANCH:-codex/http2-native-tls-bench}"
 JULIA_CHANNEL="${JULIA_CHANNEL:-1.12}"
+
+# Use repo containing this script when run from scripts/ within a clone
+if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
+    SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+    if [[ -d "${SCRIPT_DIR}/../.git" ]]; then
+        REPO_DIR="${CLOUDBENCHMARKS_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+    else
+        REPO_DIR="${CLOUDBENCHMARKS_DIR:-${HOME}/CloudBenchmarks}"
+    fi
+else
+    REPO_DIR="${CLOUDBENCHMARKS_DIR:-${HOME}/CloudBenchmarks}"
+fi
 
 if command -v sudo >/dev/null 2>&1 && [[ "$(id -u)" -ne 0 ]]; then
     SUDO=(sudo)
@@ -49,11 +60,14 @@ install_node_and_codex() {
     if [[ ! -s "${NVM_DIR}/nvm.sh" ]]; then
         curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
     fi
+    # nvm.sh references unbound variables; disable set -u for this block
+    set +u
     # shellcheck source=/dev/null
     [[ -s "${NVM_DIR}/nvm.sh" ]] && . "${NVM_DIR}/nvm.sh"
     nvm install --lts
     nvm use --lts
     npm install -g @openai/codex@latest
+    set -u
     return 0
 }
 

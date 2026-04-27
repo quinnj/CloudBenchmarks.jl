@@ -3,9 +3,10 @@
 `CloudBenchmarks` is set up to benchmark the current Reseau-backed cloud stack directly.
 
 Both the root project and the VM runner project pin:
-- `CloudBase.jl#jq-reseau-http`
-- `CloudStore.jl#jq-reseau-http`
-- `Reseau.jl#jq-reseau-http-perf-pass`
+- `CloudBase.jl#codex/http2-native-tls-bench`
+- `CloudStore.jl#codex/http2-native-tls-bench`
+- `HTTP.jl#codex/http2-native-tls-bench`
+- `Reseau.jl#codex/tls-crypto-phase0`
 
 That means a fresh `Pkg.instantiate()` lands on the intended benchmark stack without manual `Pkg.develop`.
 
@@ -20,6 +21,7 @@ julia --project=. --startup-file=no --history-file=no -e 'using Pkg; Pkg.instant
 If you want editable sibling worktrees instead of the pinned branch sources, set:
 - `CLOUDBASE_PATH`
 - `CLOUDSTORE_PATH`
+- `HTTP_PATH`
 - `RESEAU_PATH`
 
 Those overrides are resolved relative to `vm/Project.toml` and are applied only in the VM runner env.
@@ -42,7 +44,7 @@ It:
 Optional bootstrap overrides:
 
 ```bash
-export CLOUDBENCHMARKS_BRANCH=jq-reseau-http
+export CLOUDBENCHMARKS_BRANCH=codex/http2-native-tls-bench
 export CLOUDBENCHMARKS_DIR="${HOME}/CloudBenchmarks"
 export JULIA_CHANNEL=1.12
 bash scripts/setup-cloudbench-vm.sh
