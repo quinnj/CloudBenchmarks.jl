@@ -46,10 +46,10 @@ install_system_packages() {
 }
 
 install_juliaup() {
+    export PATH="${HOME}/.juliaup/bin:${PATH}"
     if ! command -v juliaup >/dev/null 2>&1; then
         curl -fsSL https://install.julialang.org | sh -s -- --yes
     fi
-    export PATH="${HOME}/.juliaup/bin:${PATH}"
     juliaup add "${JULIA_CHANNEL}"
     juliaup default "${JULIA_CHANNEL}"
     return 0
