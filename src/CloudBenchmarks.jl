@@ -204,7 +204,7 @@ function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBas
             end))
         end
         nbytes = do_op_n(credentials, bucket, nm, semaphore_limit, operation, max(1, n), size, 0)
-        nbytes = sum(fetch, futures; init=0) + nbytes[]
+        nbytes = sum(fetch, futures; init=0) + nbytes
         stop = time()
         gbits_per_second = nbytes == 0 ? 0 : (((8 * nbytes) / 1e9) / (stop - start))
         @info "single benchmark completed with bandwidth: $(gbits_per_second) Gbps"

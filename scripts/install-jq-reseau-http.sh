@@ -47,6 +47,7 @@ using CloudBenchVM
 
 vm_dir = ARGS[1]
 CloudBenchVM.instantiate_project!(vm_dir)
+Pkg.resolve()
 Pkg.precompile()
 Pkg.status(["CloudBase", "CloudStore", "HTTP", "Reseau"]; mode=Pkg.PKGMODE_MANIFEST)
 ' "${ROOT_DIR}/vm"

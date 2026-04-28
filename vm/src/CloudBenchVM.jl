@@ -94,12 +94,14 @@ end
 
 function instantiate_project!(project_dir::AbstractString = normpath(joinpath(@__DIR__, "..")))
     parse_bool_env("CLOUDBENCH_SKIP_INSTANTIATE", false) && return nothing
-    if _has_local_source_overrides()
+    has_overrides = _has_local_source_overrides()
+    if has_overrides
         _activate_local_overlay_env!(project_dir)
     else
         Pkg.activate(project_dir)
     end
     ENV["JULIA_PROJECT"] = Base.active_project()
+    Pkg.resolve()
     Pkg.instantiate()
     return nothing
 end

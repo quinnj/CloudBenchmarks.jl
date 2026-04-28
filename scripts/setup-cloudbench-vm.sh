@@ -30,15 +30,15 @@ fi
 install_system_packages() {
     if command -v apt-get >/dev/null 2>&1; then
         "${SUDO[@]}" apt-get update -y
-        DEBIAN_FRONTEND=noninteractive "${SUDO[@]}" apt-get install -y git curl ca-certificates build-essential pkg-config
+        DEBIAN_FRONTEND=noninteractive "${SUDO[@]}" apt-get install -y git curl ca-certificates build-essential pkg-config ethtool iproute2 pciutils sysstat jq irqbalance
         return 0
     fi
     if command -v dnf >/dev/null 2>&1; then
-        "${SUDO[@]}" dnf install -y git curl ca-certificates gcc gcc-c++ make pkgconf-pkg-config
+        "${SUDO[@]}" dnf install -y git curl ca-certificates gcc gcc-c++ make pkgconf-pkg-config ethtool iproute pciutils sysstat jq irqbalance
         return 0
     fi
     if command -v yum >/dev/null 2>&1; then
-        "${SUDO[@]}" yum install -y git curl ca-certificates gcc gcc-c++ make pkgconfig
+        "${SUDO[@]}" yum install -y git curl ca-certificates gcc gcc-c++ make pkgconfig ethtool iproute pciutils sysstat jq irqbalance
         return 0
     fi
     echo "unsupported package manager; install git/curl/build tools manually" >&2
@@ -142,7 +142,9 @@ Runner project: ${REPO_DIR}/vm/Project.toml
 Next steps:
 1. Edit ${REPO_DIR}/vm/bench.env or ${REPO_DIR}/vm/azure.env
 2. Run benchmarks: ${REPO_DIR}/scripts/run-cloudbench.sh
-3. Profile one case: ${REPO_DIR}/scripts/run-cloudbench-profile.sh
+3. Capture Azure VM/network facts: ${REPO_DIR}/scripts/azure-vm-preflight.sh
+4. Run Azure put/get matrix: ${REPO_DIR}/scripts/run-azure-put-get-matrix.sh
+5. Profile one case: ${REPO_DIR}/scripts/run-cloudbench-profile.sh
 
 MSG
     return 0
