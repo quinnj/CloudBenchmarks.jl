@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+
+export CLOUDBENCH_PROVIDER="${CLOUDBENCH_PROVIDER:-azure}"
+export CLOUDBENCH_PROFILE="${CLOUDBENCH_PROFILE:-full}"
+export CLOUDBENCH_TLS="${CLOUDBENCH_TLS:-reseau}"
+export CLOUDBENCH_SIZES="${CLOUDBENCH_SIZES:-67108864}"
+export CLOUDBENCH_NTHREADS="${CLOUDBENCH_NTHREADS:-8}"
+export CLOUDBENCH_NWORKERS="${CLOUDBENCH_NWORKERS:-3}"
+export CLOUDBENCH_SEMAPHORE_LIMITS="${CLOUDBENCH_SEMAPHORE_LIMITS:-64}"
+export CLOUDBENCH_OPERATIONS="${CLOUDBENCH_OPERATIONS:-put,get}"
+export CLOUDBENCH_NTIMES="${CLOUDBENCH_NTIMES:-5}"
+export JULIA_NUM_THREADS="${JULIA_NUM_THREADS:-8}"
+
+if [[ -z "${CLOUDBENCH_MACHINE_SPECS:-}" ]]; then
+    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    export CLOUDBENCH_MACHINE_SPECS="azure-native-tls-${stamp}-t${JULIA_NUM_THREADS}-w${CLOUDBENCH_NWORKERS}"
+fi
+
+exec "${ROOT_DIR}/scripts/run-cloudbench.sh" "$@"
