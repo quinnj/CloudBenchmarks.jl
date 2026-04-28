@@ -114,6 +114,7 @@ else
     Pkg.Registry.update()
 end
 Pkg.resolve()
+Pkg.update(Pkg.PackageSpec.(name=["CloudBase", "CloudStore", "HTTP", "Reseau"]))
 Pkg.instantiate()
 Pkg.precompile()
 Pkg.status(; mode=Pkg.PKGMODE_MANIFEST)
