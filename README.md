@@ -2,11 +2,12 @@
 
 `CloudBenchmarks` is set up to benchmark the current Reseau-backed cloud stack directly.
 
-Both the root project and the VM runner project pin:
-- `CloudBase.jl#codex/http2-native-tls-bench`
-- `CloudStore.jl#codex/http2-native-tls-bench`
-- `HTTP.jl#codex/http2-native-tls-bench`
-- `Reseau.jl#codex/tls-crypto-phase0`
+Both the root project and the VM runner project use CloudBase 1.6.0 and pin
+the current benchmark branches:
+
+- `CloudStore.jl#compat/http-2`
+- `HTTP.jl#perf/high-concurrency-client-throughput`
+- `Reseau.jl#perf/avoid-redundant-deadline-scheduling`
 
 That means a fresh `Pkg.instantiate()` lands on the intended benchmark stack without manual `Pkg.develop`.
 
@@ -44,9 +45,9 @@ It:
 Optional bootstrap overrides:
 
 ```bash
-export CLOUDBENCHMARKS_BRANCH=codex/http2-native-tls-bench
+export CLOUDBENCHMARKS_BRANCH=codex/juliacon-2026-cloud-throughput
 export CLOUDBENCHMARKS_DIR="${HOME}/CloudBenchmarks"
-export JULIA_CHANNEL=1.12
+export JULIA_CHANNEL=1.13.0-rc1
 bash scripts/setup-cloudbench-vm.sh
 ```
 
@@ -73,7 +74,6 @@ Important knobs:
 - `CLOUDBENCH_PROFILE=smoke|full`
 - `CLOUDBENCH_TLS=reseau`
 - `CLOUDBENCH_NTHREADS=16`
-- `CLOUDBENCH_NWORKERS=0`
 - `CLOUDBENCH_SEMAPHORE_LIMITS=16,32,64`
 - `CLOUDBENCH_OPERATIONS=put,get,prefetchdownloadstream`
 - `CLOUDBENCH_SIZES=262144,1048576,8388608,67108864`
@@ -128,18 +128,33 @@ Use the dedicated matrix runner for the smaller/larger put/get grid we were runn
 
 ```bash
 export CLOUDBENCH_PROVIDER=azure
-export JULIA_NUM_THREADS=32
-export CLOUDBENCH_MATRIX_SEMAPHORES=32,64,96
-export CLOUDBENCH_MATRIX_SIZES=1048576,8388608,67108864
-export CLOUDBENCH_MATRIX_PARTS=8
-export CLOUDBENCH_MATRIX_ALLOW_MULTIPART=true,false
+export JULIA_NUM_THREADS=64
+export CLOUDBENCH_STACK_LABEL=http2-reseau
+export CLOUDBENCH_MATRIX_SEMAPHORES=96
+export CLOUDBENCH_MATRIX_SIZES=67108864
+export CLOUDBENCH_MATRIX_PARTS=256
+export CLOUDBENCH_MATRIX_REPEATS=3
+export CLOUDBENCH_MATRIX_WARMUP_PARTS=8
+export CLOUDBENCH_MATRIX_ALLOW_MULTIPART=false
 export CLOUDBENCH_MATRIX_OPERATIONS=put,get
 ./scripts/run-azure-put-get-matrix.sh
 ```
 
-The matrix runner prints the resolved package paths and writes a headered TSV under
-`vm/results/`, including thread count, semaphore, multipart mode, operation, object size,
-parts, bytes, seconds, and Gbps.
+This runner uses one Julia process and multiple Julia threads. It does not use
+worker processes. HTTP selects the protocol automatically. The runner does not
+force HTTP/1.1 or HTTP/2.
+
+The matrix runner prints the exact package versions and sources. It writes a
+headered TSV under `vm/results/`. Each row includes the negotiated protocol,
+thread count, semaphore, multipart mode, operation, object size, bytes, seconds,
+Gbps, and request latency percentiles. Set
+`CLOUDBENCH_MATRIX_CLEANUP_OBJECTS=false` only when you need to inspect the
+generated objects after a run.
+
+For an HTTP 1.x comparison, instantiate `legacy/Project.toml`. It pins
+CloudBase 1.5.1, CloudStore 1.7.0, and HTTP 1.11.0. Run the same matrix script
+with that project and the same Julia thread count, object sizes, and repeat
+count.
 
 ## Profile One Case
 
@@ -164,6 +179,22 @@ Profiling artifacts are written under `vm/results/`:
 - `*-alloc.txt`
 - `*-alloc-summary.tsv`
 - `*-metrics.txt`
+
+The Azure matrix also has focused CPU and allocation profilers. Both use one
+Julia process and the same automatic protocol selection as the matrix:
+
+```bash
+julia -t64 --project=vm scripts/profile_azure_matrix.jl
+julia -t64 --project=vm scripts/profile_azure_allocs.jl
+```
+
+Configure them with `CLOUDBENCH_PROFILE_OPERATION`,
+`CLOUDBENCH_PROFILE_SIZE`, `CLOUDBENCH_PROFILE_PARTS`, and
+`CLOUDBENCH_PROFILE_SEMAPHORE`. CPU profiles use `Profile`. Allocation
+profiles use `Profile.Allocs` and accept
+`CLOUDBENCH_PROFILE_ALLOC_SAMPLE_RATE`.
+The CPU profiler also exports a portable PProf `*-cpu.pb.gz` file. Set
+`CLOUDBENCH_PROFILE_PPROF_OUTPUT` to select a different path.
 
 ## Optional Local Clone Helper
 
