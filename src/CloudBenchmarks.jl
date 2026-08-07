@@ -1,10 +1,19 @@
 module CloudBenchmarks
 
-using CloudStore, CloudBase, HTTP, MbedTLS, OpenSSL, ConcurrentUtilities, Mmap, Profile
+using CloudStore, CloudBase, ConcurrentUtilities, Mmap, Profile
 
 const VER = "post"
 
 const worker_pool = Pool{Int, Worker}()
+
+@inline _sizes_snapshot() = Dict(size => (label, nparts) for (size, (label, nparts)) in SIZES)
+
+function _install_sizes!(snapshot::AbstractDict{Int, <:Tuple})
+    for (size, value) in snapshot
+        SIZES[size] = value
+    end
+    return nothing
+end
 
 function runbenchmarks(cloud_machine_specs::String, creds::Union{CloudBase.CloudCredentials, Function}, bucket::CloudBase.AbstractStore;
         nthreads::Vector{Int}=[Threads.nthreads()],
@@ -17,6 +26,7 @@ function runbenchmarks(cloud_machine_specs::String, creds::Union{CloudBase.Cloud
         profile::Bool=false,
     )
     results = []
+    sizes_snapshot = _sizes_snapshot()
     for nth in nthreads
         # create our worker where we'll run the benchmark from
         if nth == Threads.nthreads()
@@ -25,7 +35,10 @@ function runbenchmarks(cloud_machine_specs::String, creds::Union{CloudBase.Cloud
         else
             worker = acquire(worker_pool, nth) do
                 w = Worker(; threads=string(nth))
-                remote_fetch(w, :(using CloudBenchmarks))
+                remote_fetch(w, quote
+                    using CloudBenchmarks
+                    CloudBenchmarks._install_sizes!($sizes_snapshot)
+                end)
                 w
             end
             try
@@ -60,10 +73,14 @@ end
 
 function makeworkers(n, creds, bucket)
     tasks = Task[]
+    sizes_snapshot = _sizes_snapshot()
     for _ = 1:n
         push!(tasks, Threads.@spawn begin
             w = Worker(; threads=string(Threads.nthreads()))
-            remote_fetch(w, :(using CloudBenchmarks))
+            remote_fetch(w, quote
+                using CloudBenchmarks
+                CloudBenchmarks._install_sizes!($sizes_snapshot)
+            end)
             remote_fetch(w, quote
                 const credentials = $creds
                 const bucket = $bucket
@@ -89,12 +106,7 @@ function runbenchmarks(creds::Union{CloudBase.CloudCredentials, Function}, bucke
         credentials = creds isa Function ? creds() : creds
         workers = makeworkers(nwork, credentials, bucket)
         for type in tls
-            if type == :mbedtls
-                HTTP.SOCKET_TYPE_TLS[] = MbedTLS.SSLContext
-            else
-                @assert type == :openssl
-                HTTP.SOCKET_TYPE_TLS[] = OpenSSL.SSLStream
-            end
+            (type == :openssl || type == :reseau) || throw(ArgumentError("Reseau-backed benchmarks only support `:openssl`/`:reseau` TLS labels; got `$type`"))
             for sem in semaphore_limit
                 for op in operation
                     for sz in sizes
@@ -140,17 +152,21 @@ function do_op(credentials, bucket, nm, pool, op, data, i)
 end
 
 function do_op_n(credentials, bucket, nm, semaphore_limit, op, n, size, i)
-    pool = HTTP.Pool(semaphore_limit)
-    data = op == :put ? rand(UInt8, size) : nothing
-    nbytes = Threads.Atomic{Int}(0)
-    @sync for j = 1:n
-        Threads.@spawn begin
-            k = i * n + $j
-            len = do_op(credentials, bucket, nm, pool, op, data, k)
-            Threads.atomic_add!(nbytes, len)
+    pool = CloudBase.CloudPool(semaphore_limit)
+    try
+        data = op == :put ? rand(UInt8, size) : nothing
+        nbytes = Threads.Atomic{Int}(0)
+        @sync for j = 1:n
+            errormonitor(Threads.@spawn begin
+                k = i * n + $j
+                len = do_op(credentials, bucket, nm, pool, op, data, k)
+                Threads.atomic_add!(nbytes, len)
+            end)
         end
+        return nbytes[]
+    finally
+        close(pool)
     end
-    return nbytes[]
 end
 
 function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBase.AbstractStore,
@@ -188,7 +204,7 @@ function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBas
             end))
         end
         nbytes = do_op_n(credentials, bucket, nm, semaphore_limit, operation, max(1, n), size, 0)
-        nbytes = sum(fetch, futures; init=0) + nbytes[]
+        nbytes = sum(fetch, futures; init=0) + nbytes
         stop = time()
         gbits_per_second = nbytes == 0 ? 0 : (((8 * nbytes) / 1e9) / (stop - start))
         @info "single benchmark completed with bandwidth: $(gbits_per_second) Gbps"

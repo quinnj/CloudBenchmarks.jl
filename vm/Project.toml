@@ -1,19 +1,22 @@
-name = "CloudBenchmarks"
-uuid = "128a3188-ac61-41e7-9373-75758cb91c5b"
+name = "CloudBenchVM"
+uuid = "86ef4d2b-47b1-460e-8b4f-783fac126226"
 version = "0.1.0"
 authors = ["quinnj <quinn.jacobd@gmail.com>"]
 
 [deps]
 CloudBase = "85eb1798-d7c4-4918-bb13-c944d38e27ed"
+CloudBenchmarks = "128a3188-ac61-41e7-9373-75758cb91c5b"
 CloudStore = "3365d9ee-d53b-4a56-812d-5344d5b716d7"
-ConcurrentUtilities = "f0e56b4a-5159-44fe-b623-3e5288b988bb"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
-Mmap = "a63ad114-7e13-5084-954f-fe012c677804"
 PProf = "e4faabce-9ead-11e9-39d9-4379958e3056"
-Profile = "9abbd945-dff8-562f-b5e8-e1ebf5ef1b79"
+Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Reseau = "802f3686-a58f-41ce-bb0c-3c43c75bba36"
+Sockets = "6462fe0b-24de-5631-8697-dd941f90decc"
 
 [sources]
+CloudBenchmarks = {path = ".."}
 CloudStore = {url = "https://github.com/JuliaServices/CloudStore.jl.git", rev = "compat/http-2"}
 HTTP = {url = "https://github.com/JuliaWeb/HTTP.jl.git", rev = "perf/high-concurrency-client-throughput"}
 Reseau = {url = "https://github.com/JuliaServices/Reseau.jl.git", rev = "perf/avoid-redundant-deadline-scheduling"}
