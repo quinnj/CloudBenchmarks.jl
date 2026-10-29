@@ -74,6 +74,10 @@ CLOUDBENCH_PROVIDER=azure ./scripts/run-cloudbench.sh
 CLOUDBENCH_PROVIDER=s3 ./scripts/run-cloudbench.sh
 ```
 
+Registered CloudStore releases support S3 and Azure Blob Storage but not Google Cloud
+Storage, so `CLOUDBENCH_PROVIDER=gcp` stops with an error unless a `CLOUDSTORE_PATH` checkout
+adds it.
+
 S3 needs an existing bucket in `CLOUDBENCH_S3_BUCKET`, with `CLOUDBENCH_S3_REGION` (default
 `us-east-1`) and, for S3-compatible servers such as MinIO, `CLOUDBENCH_S3_HOST`
 (`http://127.0.0.1:9000`). Credentials come from the AWS default chain

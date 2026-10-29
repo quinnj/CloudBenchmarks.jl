@@ -98,6 +98,8 @@ end
 
 function load_provider_resources()
     if PROVIDER == "gcp"
+        hasmethod(CloudStore.get, Tuple{CloudBase.GCP.Bucket, String}) || error(
+            "CloudStore $(pkgversion(CloudStore)) has no Google Cloud Storage support; the gcp provider needs a CloudStore branch that adds it")
         provider = CloudBenchVM.load_gcp_config()
         credentials = load_gcp_credentials(provider)
         bucket = CloudBase.GCP.Bucket(provider.bucket_name)
