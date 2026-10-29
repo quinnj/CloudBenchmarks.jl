@@ -22,10 +22,10 @@ sync_repo() {
     git -C "${path}" pull --ff-only origin "${rev}"
 }
 
-sync_repo "Reseau" "https://github.com/JuliaServices/Reseau.jl.git" "codex/tls-crypto-phase0"
-sync_repo "HTTP" "https://github.com/JuliaWeb/HTTP.jl.git" "codex/http2-native-tls-bench"
-sync_repo "CloudBase" "https://github.com/JuliaServices/CloudBase.jl.git" "codex/http2-native-tls-bench"
-sync_repo "CloudStore" "https://github.com/JuliaServices/CloudStore.jl.git" "codex/http2-native-tls-bench"
+sync_repo "Reseau" "https://github.com/JuliaServices/Reseau.jl.git" "main"
+sync_repo "HTTP" "https://github.com/JuliaWeb/HTTP.jl.git" "master"
+sync_repo "CloudBase" "https://github.com/JuliaServices/CloudBase.jl.git" "main"
+sync_repo "CloudStore" "https://github.com/JuliaServices/CloudStore.jl.git" "main"
 
 "${JULIA_BIN}" --startup-file=no --project="${ROOT_DIR}" -e '
 using Pkg

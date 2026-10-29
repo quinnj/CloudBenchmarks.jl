@@ -55,15 +55,16 @@ end
 
 function cleanup_container!(container::CloudBase.Azure.Container, credentials::CloudBase.Azure.Credentials)
     for object in CloudStore.list(container; credentials)
-        CloudStore.delete(object; credentials, nowarn=true)
+        CloudStore.delete(object; credentials)
     end
     delete_container!(container, credentials)
     return nothing
 end
 
 function benchmark_config()
-    smoke_size_names = PROVIDER == "azure" ? ["CLOUDBENCH_SMOKE_SIZE", "CLOUDBENCH_AZURE_SMOKE_SIZE"] : ["CLOUDBENCH_SMOKE_SIZE", "CLOUDBENCH_GCP_SMOKE_SIZE"]
-    smoke_parts_names = PROVIDER == "azure" ? ["CLOUDBENCH_SMOKE_PARTS", "CLOUDBENCH_AZURE_SMOKE_PARTS"] : ["CLOUDBENCH_SMOKE_PARTS", "CLOUDBENCH_GCP_SMOKE_PARTS"]
+    tag = uppercase(PROVIDER)
+    smoke_size_names = ["CLOUDBENCH_SMOKE_SIZE", "CLOUDBENCH_$(tag)_SMOKE_SIZE"]
+    smoke_parts_names = ["CLOUDBENCH_SMOKE_PARTS", "CLOUDBENCH_$(tag)_SMOKE_PARTS"]
     smoke_size = CloudBenchVM.parse_int_env(smoke_size_names, 2^20)
     smoke_parts = CloudBenchVM.parse_int_env(smoke_parts_names, 4)
     return CloudBenchVM.load_benchmark_config(
@@ -78,6 +79,7 @@ function benchmark_config()
 end
 
 function print_config(machine_specs::String, resource_name::String, generated_resource::Bool, config::CloudBenchVM.BenchmarkConfig)
+    CloudBenchVM.print_stack(get(ENV, "CLOUDBENCH_STACK_LABEL", get(ENV, "CLOUDBENCH_STACK", "registered")))
     println("provider=", PROVIDER)
     println("machine_specs=", machine_specs)
     println("resource=", resource_name)
@@ -100,6 +102,10 @@ function load_provider_resources()
         credentials = load_gcp_credentials(provider)
         bucket = CloudBase.GCP.Bucket(provider.bucket_name)
         return provider, credentials, bucket, false, nothing
+    elseif PROVIDER == "s3"
+        provider = CloudBenchVM.load_s3_config()
+        bucket = CloudBase.AWS.Bucket(provider.bucket_name, provider.region; host=provider.host)
+        return provider, CloudBase.AWS.Credentials(), bucket, false, nothing
     end
 
     provider = CloudBenchVM.load_azure_config()
@@ -113,7 +119,7 @@ function main()
     config = benchmark_config()
     CloudBenchVM.apply_size_part_overrides!(CloudBenchmarks.SIZES, config)
     provider, credentials, store, generated_resource, cleanup = load_provider_resources()
-    resource_name = PROVIDER == "gcp" ? (provider::CloudBenchVM.GCPConfig).bucket_name : (store::CloudBase.Azure.Container).name
+    resource_name = store.name
     machine_specs = get(ENV, "CLOUDBENCH_MACHINE_SPECS", CloudBenchVM.default_machine_specs("$(PROVIDER)-$(config.profile)"))
     print_config(machine_specs, resource_name, generated_resource, config)
     CloudBenchVM.parse_bool_env("CLOUDBENCH_DRY_RUN", false) && return nothing

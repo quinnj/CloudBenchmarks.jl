@@ -52,7 +52,7 @@ end
 
 function cleanup_container!(container::CloudBase.Azure.Container, credentials::CloudBase.Azure.Credentials)
     for object in CloudStore.list(container; credentials)
-        CloudStore.delete(object; credentials, nowarn=true)
+        CloudStore.delete(object; credentials)
     end
     delete_container!(container, credentials)
     return nothing

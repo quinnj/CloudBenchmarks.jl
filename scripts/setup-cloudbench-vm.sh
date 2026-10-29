@@ -6,7 +6,7 @@ if [[ -n "${TRACE:-}" ]]; then
 fi
 
 REPO_URL="${CLOUDBENCHMARKS_URL:-https://github.com/quinnj/CloudBenchmarks.jl.git}"
-REPO_BRANCH="${CLOUDBENCHMARKS_BRANCH:-codex/http2-native-tls-bench}"
+REPO_BRANCH="${CLOUDBENCHMARKS_BRANCH:-main}"
 JULIA_CHANNEL="${JULIA_CHANNEL:-1.12}"
 
 # Use repo containing this script when run from scripts/ within a clone

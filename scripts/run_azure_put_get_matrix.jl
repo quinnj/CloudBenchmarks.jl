@@ -6,8 +6,11 @@ include(joinpath(VM_DIR, "src", "CloudBenchVM.jl"))
 using .CloudBenchVM
 
 CloudBenchVM.load_env_file!(ROOT_ENV_FILE; optional=true)
-const ENV_FILE = get(ENV, "CLOUDBENCH_ENV_FILE", CloudBenchVM.default_env_file(VM_DIR, "azure"))
+const PROVIDER = CloudBenchVM.provider_name("azure")
+const ENV_FILE = get(ENV, "CLOUDBENCH_ENV_FILE", CloudBenchVM.default_env_file(VM_DIR, PROVIDER))
 ENV_FILE != ROOT_ENV_FILE && CloudBenchVM.load_env_file!(ENV_FILE; optional=true)
+# Stack switches (`CLOUDBENCH_STACK`, `<PKG>_PATH`) apply to the vm project, not to `legacy/`.
+Base.active_project() == joinpath(VM_DIR, "Project.toml") && CloudBenchVM.instantiate_project!(VM_DIR)
 
 using CloudBase
 using CloudStore
@@ -44,7 +47,7 @@ end
 
 function cleanup_container!(container::CloudBase.Azure.Container, credentials::CloudBase.Azure.Credentials)
     for object in CloudStore.list(container; credentials)
-        CloudStore.delete(object; credentials, nowarn=true)
+        CloudStore.delete(object; credentials)
     end
     delete_container!(container, credentials)
     return nothing
@@ -71,33 +74,29 @@ function size_label(size::Int)::String
     return string(size, "b")
 end
 
-function package_info(name::String)
-    for pkg in values(Pkg.dependencies())
-        pkg.name == name || continue
-        version = pkg.version === nothing ? "unknown" : string(pkg.version)
-        tree = pkg.tree_hash === nothing ? "none" : string(pkg.tree_hash)
-        source = pkg.source === nothing ? "none" : string(pkg.source)
-        return (; version, tree, source)
+# The store to benchmark: an Azure container (generated unless CLOUDBENCH_AZURE_CONTAINER is
+# set) or an existing S3 bucket.
+function load_store()
+    if PROVIDER == "s3"
+        config = CloudBenchVM.load_s3_config()
+        store = CloudBase.AWS.Bucket(config.bucket_name, config.region; host=config.host)
+        return (; credentials=CloudBase.AWS.Credentials(), store, account=something(config.host, config.region),
+            generated=false)
     end
-    return (; version="missing", tree="none", source="none")
+    PROVIDER == "azure" || error("the put/get matrix supports CLOUDBENCH_PROVIDER=azure or s3, got $(PROVIDER)")
+    config = CloudBenchVM.load_azure_config()
+    return (; credentials=load_azure_credentials(config), store=load_azure_container(config), account=config.account,
+        generated=config.generated_container)
 end
 
-function print_stack(stack_label::String)
-    println("stack=", stack_label)
-    println("julia=", VERSION)
-    println("threads=", Threads.nthreads())
-    for name in ("HTTP", "Reseau", "CloudBase", "CloudStore")
-        info = package_info(name)
-        println("package=", name, " version=", info.version, " tree=", info.tree,
-            " source=", info.source)
+function probe_protocol(store, credentials)::String
+    resp = if store isa CloudBase.AWS.Bucket
+        CloudBase.AWS.get(store.baseurl; query=Dict("list-type" => "2", "max-keys" => "1"),
+            service="s3", credentials, status_exception=false)
+    else
+        CloudBase.Azure.get(store.baseurl; query=Dict("restype" => "container", "comp" => "list"),
+            credentials, status_exception=false)
     end
-    return nothing
-end
-
-function probe_protocol(container, credentials)::String
-    resp = CloudBase.Azure.get(container.baseurl;
-        query=Dict("restype" => "container", "comp" => "list"),
-        credentials, status_exception=false)
     if hasproperty(resp, :proto_major) && hasproperty(resp, :proto_minor)
         return string(getproperty(resp, :proto_major), '.', getproperty(resp, :proto_minor))
     elseif hasproperty(resp, :version)
@@ -158,6 +157,7 @@ function timed_batch(bucket, credentials, request_options, gate, prefix, op, dat
         allow_multipart, outputs=nothing)
     nbytes = Threads.Atomic{Int}(0)
     latencies_ms = Vector{Float64}(undef, nparts)
+    cpu0, gc0 = CloudBenchVM.cputime(), Base.gc_time_ns()
     started = time_ns()
     @sync for i in 1:nparts
         Threads.@spawn begin
@@ -173,7 +173,9 @@ function timed_batch(bucket, credentials, request_options, gate, prefix, op, dat
         end
     end
     seconds = Float64(time_ns() - started) / 1e9
-    return nbytes[], seconds, latency_stats(latencies_ms)
+    cpu = CloudBenchVM.cputime() - cpu0
+    gc = (Base.gc_time_ns() - gc0) / 1e9
+    return nbytes[], seconds, latency_stats(latencies_ms), (cpu, cpu / seconds, cpu / (nbytes[] / 1e9), gc)
 end
 
 function cleanup_prefix!(bucket, credentials, request_options, gate, prefix::String)
@@ -229,7 +231,7 @@ function run_cell!(io, bucket, credentials, run_id::String, account::String, con
         for repeat in 1:repeats
             GC.gc(false)
             repeat_prefix = op === :get ? prefix : string(prefix, ".r", repeat)
-            nbytes, seconds, stats = timed_batch(
+            nbytes, seconds, stats, cpu = timed_batch(
                 bucket, credentials, request_options, gate, repeat_prefix, op, data, nparts;
                 allow_multipart, outputs)
             gbps = ((8 * nbytes) / 1e9) / seconds
@@ -254,10 +256,11 @@ function run_cell!(io, bucket, credentials, run_id::String, account::String, con
                 seconds,
                 gbps,
                 stats...,
+                cpu...,
             )
             println(io, join(row, '\t'))
             flush(io)
-            @info "matrix repeat" stack_label protocol threads=Threads.nthreads() sem mode op label nparts repeat gbps seconds latency_p50_ms=stats[3] latency_p99_ms=stats[5]
+            @info "matrix repeat" stack_label protocol threads=Threads.nthreads() sem mode op label nparts repeat gbps seconds latency_p50_ms=stats[3] latency_p99_ms=stats[5] cpu_s=cpu[1] cpu_cores=cpu[2]
         end
         @info "matrix cell complete" stack_label sem mode op label nparts median_gbps=sort(rates)[cld(length(rates), 2)] max_gbps=maximum(rates)
         return rates
@@ -272,15 +275,14 @@ function run_cell!(io, bucket, credentials, run_id::String, account::String, con
 end
 
 function main()
-    config = CloudBenchVM.load_azure_config()
-    credentials = load_azure_credentials(config)
-    bucket = load_azure_container(config)
+    (; credentials, store, account, generated) = load_store()
+    bucket = store
     output_dir = CloudBenchVM.resolve_output_dir(joinpath(VM_DIR, "results"))
     stamp = Dates.format(Dates.now(Dates.UTC), dateformat"yyyymmddTHHMMSSZ")
-    run_prefix = get(ENV, "CLOUDBENCH_MATRIX_PREFIX", "azure-matrix")
+    run_prefix = get(ENV, "CLOUDBENCH_MATRIX_PREFIX", "$(PROVIDER)-matrix")
     run_id = "$(run_prefix)-$(stamp)-t$(Threads.nthreads())"
     output = get(ENV, "CLOUDBENCH_MATRIX_OUTPUT", joinpath(output_dir, "$(run_id).tsv"))
-    stack_label = get(ENV, "CLOUDBENCH_STACK_LABEL", "unspecified")
+    stack_label = get(ENV, "CLOUDBENCH_STACK_LABEL", get(ENV, "CLOUDBENCH_STACK", "registered"))
 
     sems = CloudBenchVM.parse_int_vector_env("CLOUDBENCH_MATRIX_SEMAPHORES", [Threads.nthreads()])
     sizes = CloudBenchVM.parse_int_vector_env("CLOUDBENCH_MATRIX_SIZES", [64 * 1024 * 1024])
@@ -298,11 +300,12 @@ function main()
     all(>(0), sems) || error("all semaphore limits must be positive")
     all(>(0), sizes) || error("all object sizes must be positive")
 
-    print_stack(stack_label)
+    CloudBenchVM.print_stack(stack_label)
+    println("provider=", PROVIDER)
     println("matrix_output=", output)
-    println("account=", config.account)
+    println("account=", account)
     println("container=", bucket.name)
-    println("generated_container=", config.generated_container)
+    println("generated_container=", generated)
     println("semaphores=", join(sems, ','))
     println("sizes=", join(sizes, ','))
     println("parts=", nparts)
@@ -312,22 +315,22 @@ function main()
     println("operations=", join(ops, ','))
     CloudBenchVM.parse_bool_env("CLOUDBENCH_DRY_RUN", false) && return nothing
 
-    if config.generated_container
+    if generated
         create_container!(bucket, credentials)
     end
     try
         protocol = probe_protocol(bucket, credentials)
         println("protocol=", protocol)
         open(output, "w") do io
-            println(io, "run_id\tstack\tjulia\tprotocol\taccount\tcontainer\tthreads\tsem\tmode\tallow_multipart\top\tsize_label\tsize_bytes\tnparts\trepeat\tnbytes\tseconds\tgbps\tlatency_mean_ms\tlatency_min_ms\tlatency_p50_ms\tlatency_p95_ms\tlatency_p99_ms\tlatency_max_ms")
+            println(io, "run_id\tstack\tjulia\tprotocol\taccount\tcontainer\tthreads\tsem\tmode\tallow_multipart\top\tsize_label\tsize_bytes\tnparts\trepeat\tnbytes\tseconds\tgbps\tlatency_mean_ms\tlatency_min_ms\tlatency_p50_ms\tlatency_p95_ms\tlatency_p99_ms\tlatency_max_ms\tcpu_s\tcpu_cores\tcpu_s_per_gb\tgc_s")
             for sem in sems, allow_multipart in modes, op in ops, size in sizes
-                run_cell!(io, bucket, credentials, run_id, config.account, bucket.name,
+                run_cell!(io, bucket, credentials, run_id, account, bucket.name,
                     stack_label, protocol, sem, allow_multipart, op, size, nparts,
                     repeats, warmup_parts, cleanup_objects)
             end
         end
     finally
-        if config.generated_container && !keep_container
+        if generated && !keep_container
             cleanup_container!(bucket, credentials)
         end
     end
