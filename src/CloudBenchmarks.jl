@@ -186,6 +186,7 @@ function do_op_n(credentials, bucket, nm, semaphore_limit, op, n, size, i)
             errormonitor(Threads.@spawn Base.acquire(gate) do
                 k = i * n + $j
                 len = do_op(credentials, bucket, nm, client, op, data, k)
+                len == size || error("$op transferred $len bytes; expected $size")
                 Threads.atomic_add!(nbytes, len)
             end)
         end
@@ -196,6 +197,21 @@ function do_op_n(credentials, bucket, nm, semaphore_limit, op, n, size, i)
 end
 
 median(x) = (s = sort(x); n = length(s); isodd(n) ? s[(n + 1) ÷ 2] : (s[n ÷ 2] + s[n ÷ 2 + 1]) / 2)
+
+function record_sample(config::NamedTuple, repeat::Int, sample::NamedTuple)
+    path = get(ENV, "CLOUDBENCH_SAMPLES_FILE", "")
+    isempty(path) && return nothing
+    mkpath(dirname(path))
+    row = (; config..., repeat, sample...)
+    open(path, "a+") do io
+        if filesize(io) == 0
+            println(io, join(keys(row), '\t'))
+        end
+        println(io, join(values(row), '\t'))
+        flush(io)
+    end
+    return nothing
+end
 
 function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBase.AbstractStore,
         nthreads::Int,
@@ -224,7 +240,7 @@ function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBas
         empty!(futures)
         @debug "done warming up"
         # done warming up
-        start = time()
+        start = time_ns()
         n = div(nparts, length(workers) + 1)
         for (i, worker) in enumerate(workers)
             push!(futures, remote_eval(worker, quote
@@ -235,7 +251,7 @@ function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBas
         for (b, c, g) in map(fetch, futures)
             nbytes += b; cpu += c; gc += g
         end
-        wall = time() - start
+        wall = Float64(time_ns() - start) / 1e9
         gbits_per_second = nbytes == 0 ? 0 : (((8 * nbytes) / 1e9) / wall)
         @info "single benchmark completed with bandwidth: $(gbits_per_second) Gbps" wall cpu_s=cpu cpu_cores=cpu / wall gc_s=gc
         GC.gc(true)
@@ -243,14 +259,19 @@ function runbenchmarks(credentials::CloudBase.CloudCredentials, bucket::CloudBas
         return (; gbps=gbits_per_second, wall, cpu, gc, nbytes)
     end
     samples = []
+    config = (; nthreads, nworkers, tls, semaphore_limit, operation, size_bytes=size)
     if profile
         Profile.clear()
-        @profile for _ = 1:ntimes
-            push!(samples, tester())
+        @profile for repeat = 1:ntimes
+            sample = tester()
+            push!(samples, sample)
+            record_sample(config, repeat, sample)
         end
     else
-        for _ = 1:ntimes
-            push!(samples, tester())
+        for repeat = 1:ntimes
+            sample = tester()
+            push!(samples, sample)
+            record_sample(config, repeat, sample)
         end
     end
     m(f) = median(map(f, samples))
