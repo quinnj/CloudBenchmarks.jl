@@ -102,6 +102,7 @@ Important knobs:
 - `CLOUDBENCH_SMOKE_PARTS=4`
 - `CLOUDBENCH_NTIMES=3`
 - `CLOUDBENCH_OUTPUT_DIR=vm/results`
+- `CLOUDBENCH_SAMPLES_FILE=/absolute/path/samples.tsv`
 - `CLOUDBENCH_DRY_RUN=1`
 
 Provider defaults:
@@ -127,6 +128,13 @@ are medians over the samples: `gbps_median`, `wall_s_median`, and client CPU as
 `cpu_cores_median` (CPU seconds per wall second), `cpu_s_per_gb_median`, and
 `gc_s_median`. A put's wall time includes generating its payload once per batch; its CPU
 time does not.
+
+Set `CLOUDBENCH_SAMPLES_FILE` to retain each completed sample as a TSV row before
+the final summary is written. The file includes the configuration, repetition,
+throughput, wall time, CPU time, GC time, and transferred bytes. Use a new file
+for each run; an existing file is appended to. Each operation must report the
+requested object size or the batch fails. This checks transfer length, not
+content integrity.
 
 ## Azure Preflight
 
